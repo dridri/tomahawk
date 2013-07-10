@@ -41,7 +41,7 @@ private:
     Phonon::MediaObject* mediaObject;
     Phonon::AudioOutput* audioOutput;
     Phonon::Path audioPath;
-	Phonon::Effect* audioEffect;
+    Phonon::Effect* audioEffect;
 
     unsigned int timeElapsed;
     bool expectStop;
