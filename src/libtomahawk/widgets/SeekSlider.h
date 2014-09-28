@@ -21,12 +21,13 @@
 #define SEEKSLIDER_H
 
 #include "DllMacro.h"
+#include "utils/DpiScaler.h"
 
 #include <QSlider>
 
 class QTimeLine;
 
-class DLLEXPORT SeekSlider : public QSlider
+class DLLEXPORT SeekSlider : public QSlider, private TomahawkUtils::DpiScaler
 {
 Q_OBJECT
 
@@ -36,14 +37,18 @@ public:
 
     void setTimeLine( QTimeLine* timeline ) { m_timeLine = timeline; }
 
+    void setAcceptWheelEvents( bool b ) { m_acceptWheelEvents = b; }
+
 public slots:
     void setValue( int value );
-    
+
 protected:
     void mousePressEvent( QMouseEvent* event );
+    void wheelEvent( QWheelEvent* event );
 
 private:
     QTimeLine* m_timeLine;
+    bool m_acceptWheelEvents;
 };
 
 #endif // SEEKSLIDER_H

@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2012, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
  *
@@ -36,30 +36,77 @@ Q_OBJECT
 public:
     enum AudioErrorCode { StreamReadError, AudioDeviceError, DecodeError, UnknownError, NoError };
     enum AudioState { Stopped = 0, Playing = 1, Paused = 2, Error = 3, Loading = 4 };
+    enum AudioChannel { LeftChannel, LeftSurroundChannel, RightChannel , RightSurroundChannel, CenterChannel , SubwooferChannel };
 
     static AudioEngine* instance();
 
     explicit AudioEngine();
     ~AudioEngine();
 
+    /**
+     * List the MIME types we can play.
+     *
+     * This list might not include all possible MIME types that can be played.
+     * If you know that a certain service always returns a specific MIME type
+     * not reported here, we still might be able to play this media. Please
+     * check the individual backends why they do not report it and if every
+     * (recent) version supports this type.
+     *
+     * @return A list of playable MIME types.
+     */
     QStringList supportedMimeTypes() const;
-    unsigned int volume() const; // in percent
+
+    /**
+     * Reports the current set volume in percent (0-100).
+     *
+     * @return Current volume in percent.
+     */
+    unsigned int volume() const;
 
     AudioState state() const;
     bool isPlaying() const;
     bool isPaused() const;
     bool isStopped() const;
+    bool isMuted() const;
 
-    /* Returns the PlaylistInterface of the currently playing track. Note: This might be different to the current playlist! */
+    /**
+     * Returns the PlaylistInterface of the currently playing track.
+     *
+     * Note: This might be different to the current playlist!
+     */
     Tomahawk::playlistinterface_ptr currentTrackPlaylist() const;
 
-    /* Returns the PlaylistInterface of the current playlist. Note: The currently playing track might still be from a different playlist! */
+    /**
+     * Returns the PlaylistInterface of the current playlist.
+     *
+     * Note: The currently playing track might still be from a different
+     * playlist!
+     */
     Tomahawk::playlistinterface_ptr playlist() const;
 
     Tomahawk::result_ptr currentTrack() const;
     Tomahawk::query_ptr stopAfterTrack() const;
 
+    /**
+     * Get the current position in the media.
+     *
+     * As the user might seek forwards and backwards this only returns the
+     * location in the media, not the actual time that the media was already
+     * playing.
+     * @return The current time in milliseconds.
+     */
     qint64 currentTime() const;
+
+    /**
+     * Returns the total duration of the currently playing track.
+     *
+     * For some media this time might only be an estimate as metadate might
+     * not have reported a duration and thus the duration is estimated. During
+     * playback we might get a better estimate so that the return value may
+     * differ between multiple calls.
+     *
+     * @return The total duration in milliseconds.
+     */
     qint64 currentTrackTotalTime() const;
 
     int equalizerBandCount();
@@ -70,6 +117,9 @@ public slots:
     void play();
     void pause();
     void stop( AudioErrorCode errorCode = NoError );
+
+    bool activateDataOutput();
+    bool deactivateDataOutput();
 
     void previous();
     void next();
@@ -84,7 +134,9 @@ public slots:
     void lowerVolume();
     void raiseVolume();
     void mute();
+    void toggleMute();
 
+    void play( const QUrl& url );
     void playItem( Tomahawk::playlistinterface_ptr playlist, const Tomahawk::result_ptr& result, const Tomahawk::query_ptr& fromQuery = Tomahawk::query_ptr() );
     void playItem( Tomahawk::playlistinterface_ptr playlist, const Tomahawk::query_ptr& query );
     void playItem( const Tomahawk::artist_ptr& artist );
@@ -98,12 +150,14 @@ public slots:
     void setShuffled( bool enabled );
 
 signals:
-    void loading( const Tomahawk::result_ptr& track );
-    void started( const Tomahawk::result_ptr& track );
-    void finished( const Tomahawk::result_ptr& track );
+    void loading( const Tomahawk::result_ptr track );
+    void started( const Tomahawk::result_ptr track );
+    void finished( const Tomahawk::result_ptr track );
     void stopped();
     void paused();
     void resumed();
+
+    void audioDataReady( QMap< AudioEngine::AudioChannel, QVector<qint16> > data );
 
     void stopAfterTrackChanged();
 
@@ -114,6 +168,7 @@ signals:
     void controlStateChanged();
     void stateChanged( AudioState newState, AudioState oldState );
     void volumeChanged( int volume /* in percent */ );
+    void mutedChanged( bool muted );
 
     void timerMilliSeconds( qint64 msElapsed );
     void timerSeconds( unsigned int secondsElapsed );
@@ -126,7 +181,8 @@ signals:
 
 private slots:
     void loadTrack( const Tomahawk::result_ptr& result ); //async!
-    void performLoadTrack( const Tomahawk::result_ptr& result, QSharedPointer< QIODevice >& io ); //only call from loadTrack kthxbi
+    void performLoadIODevice( const Tomahawk::result_ptr& result, const QString& url ); //only call from loadTrack kthxbi
+    void performLoadTrack( const Tomahawk::result_ptr result, const QString url, QSharedPointer< QIODevice > io ); //only call from loadTrack or performLoadIODevice kthxbi
     void loadPreviousTrack();
     void loadNextTrack();
 
@@ -141,16 +197,16 @@ private slots:
     void sendNowPlayingNotification( const Tomahawk::InfoSystem::InfoType type );
     void sendWaitingNotification() const;
 
-    void queueStateSafety();
-
 private:
-    void checkStateQueue();
-    void queueState( AudioState state );
     void setState( AudioState state );
     void setCurrentTrackPlaylist( const Tomahawk::playlistinterface_ptr& playlist );
     void initEqualizer();
 
-    Q_DECLARE_PRIVATE( AudioEngine );
+    void initEqualizer();
+    void audioDataArrived( QMap< AudioEngine::AudioChannel, QVector< qint16 > >& data );
+
+
+    Q_DECLARE_PRIVATE( AudioEngine )
     AudioEnginePrivate* d_ptr;
 };
 

@@ -30,13 +30,13 @@
 #include "TomahawkSettings.h"
 #include "utils/TomahawkUtils.h"
 #include "infosystem/InfoSystemWorker.h"
+#include "utils/Json.h"
 #include "utils/Logger.h"
+#include "utils/NetworkAccessManager.h"
 #include "Source.h"
 
 #define HYPEM_URL "http://hypem.com/playlist/"
 #define HYPEM_END_URL "json/1/data.js"
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
 
 namespace Tomahawk
 {
@@ -204,7 +204,7 @@ HypemPlugin::notInCacheSlot( QHash<QString, QString> criteria, Tomahawk::InfoSys
             QUrl url = QUrl( QString( HYPEM_URL "%1/%2" ).arg( criteria["chart_id"].toLower() ).arg(HYPEM_END_URL) );
             qDebug() << Q_FUNC_INFO << "Getting chart url" << url;
 
-            QNetworkReply* reply = TomahawkUtils::nam()->get( QNetworkRequest( url ) );
+            QNetworkReply* reply = Tomahawk::Utils::nam()->get( QNetworkRequest( url ) );
             reply->setProperty( "requestData", QVariant::fromValue< Tomahawk::InfoSystem::InfoRequestData >( requestData ) );
             connect( reply, SIGNAL( finished() ), SLOT( chartReturned() ) );
             return;
@@ -322,13 +322,13 @@ HypemPlugin::chartReturned()
     QVariantMap returnedData;
     if ( reply->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
         bool ok;
-        QVariantMap res = p.parse( reply, &ok ).toMap();
+        QByteArray jsonData = reply->readAll();
+        QVariantMap res = TomahawkUtils::parseJson( jsonData, &ok ).toMap();
 
         if ( !ok )
         {
-            tLog() << "Failed to parse json from chart lookup:" << p.errorString() << "On line" << p.errorLine();
+            tLog() << "Failed to parse json from chart lookup:" << jsonData;
             return;
         }
 

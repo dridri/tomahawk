@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include "PlaylistInterface.h"
 #include "playlist/QueueView.h"
 #include "ViewPage.h"
+#include "ViewPagePlugin.h"
 
 #include <QObject>
 #include <QHash>
@@ -42,7 +43,6 @@ class AlbumInfoWidget;
 class ArtistInfoWidget;
 class TreeWidget;
 class CollectionModel;
-class ContextWidget;
 class FlexibleView;
 class FlexibleTreeView;
 class PlaylistModel;
@@ -56,7 +56,6 @@ class SourceInfoWidget;
 class InfoBar;
 class TrackInfoWidget;
 class NewReleasesWidget;
-class WhatsHotWidget;
 class QPushButton;
 class InboxModel;
 
@@ -77,9 +76,8 @@ public:
 
     QWidget* widget() const { return m_widget; }
     InfoBar* infobar() const { return m_infobar; }
-    ContextWidget* context() const { return m_contextWidget; }
 
-    PlaylistView* queue() const { return m_queue->queue(); }
+    QueueView* queue() const { return m_queue; }
     void setQueue( QueueView* queue ) { m_queue = queue; }
 
     bool isSuperCollectionVisible() const;
@@ -91,9 +89,7 @@ public:
 
     Tomahawk::ViewPage* show( Tomahawk::ViewPage* page );
 
-    Tomahawk::ViewPage* whatsHotWidget() const;
     Tomahawk::ViewPage* newReleasesWidget() const;
-    Tomahawk::ViewPage* recentPlaysWidget() const;
     Tomahawk::ViewPage* superCollectionView() const;
     Tomahawk::ViewPage* inboxWidget() const;
 
@@ -115,6 +111,8 @@ public:
 
     FlexibleView* createPageForList( const QString& title, const QList< Tomahawk::query_ptr >& queries );
 
+    void addDynamicPage( Tomahawk::ViewPagePlugin* viewPage, const QString& pageName = QString() );
+
 signals:
     void filterAvailable( bool b );
 
@@ -126,22 +124,18 @@ signals:
     void viewPageAboutToBeDestroyed( Tomahawk::ViewPage* );
     void viewPageDestroyed();
 
-    void showQueueRequested();
-    void hideQueueRequested();
-
     void historyBackAvailable( bool avail );
     void historyForwardAvailable( bool avail );
 
-    void viewPageAdded( const QString& pageName, const QString& text, const QIcon& icon );
+    void viewPageAdded( const QString& pageName, Tomahawk::ViewPage* page, int sortValue );
 
 public slots:
     Tomahawk::ViewPage* showSuperCollection();
-    Tomahawk::ViewPage* showWhatsHotPage();
     Tomahawk::ViewPage* showNewReleasesPage();
-    Tomahawk::ViewPage* showRecentPlaysPage();
     Tomahawk::ViewPage* showInboxPage();
+    Tomahawk::ViewPage* showQueuePage();
 
-    void addDynamicPage( const QString& pageName, const QString& text, const QIcon& icon, boost::function< Tomahawk::ViewPage*() > instanceLoader );
+//    void addDynamicPage( const QString& pageName, const QString& text, const QIcon& icon, boost::function< Tomahawk::ViewPage*() > instanceLoader, int sortValue = 0 );
     Tomahawk::ViewPage* showDynamicPage( const QString& pageName );
 
     void showCurrentTrack();
@@ -161,9 +155,7 @@ public slots:
     QList< Tomahawk::ViewPage* > allPages() const;
     QList< Tomahawk::ViewPage* > historyPages() const;
     void destroyPage( Tomahawk::ViewPage* page );
-
-    void showQueue() { emit showQueueRequested(); }
-    void hideQueue() { emit hideQueueRequested(); }
+    bool destroyCurrentPage();
 
     void playlistInterfaceChanged( Tomahawk::playlistinterface_ptr );
 
@@ -182,20 +174,18 @@ private:
 
     QWidget* m_widget;
     InfoBar* m_infobar;
-    ContextWidget* m_contextWidget;
     QStackedWidget* m_stack;
     AnimatedSplitter* m_splitter;
 
     TreeModel* m_superCollectionModel;
     TreeWidget* m_superCollectionView;
     QueueView* m_queue;
-    WhatsHotWidget* m_whatsHotWidget;
     NewReleasesWidget* m_newReleasesWidget;
-    Tomahawk::ViewPage* m_recentPlaysWidget;
     Tomahawk::ViewPage* m_inboxWidget;
     InboxModel* m_inboxModel;
 
     QHash< QString, Tomahawk::ViewPage* > m_dynamicPages;
+    QHash< QString, QPointer< Tomahawk::ViewPagePlugin > > m_dynamicPagePlugins;
     QHash< QString, boost::function< Tomahawk::ViewPage*() > > m_dynamicPagesInstanceLoaders;
 
     QList< Tomahawk::collection_ptr > m_superCollections;

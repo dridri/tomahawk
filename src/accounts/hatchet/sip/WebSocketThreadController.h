@@ -18,14 +18,12 @@
 #ifndef WEBSOCKET_THREAD_CONTROLLER_H
 #define WEBSOCKET_THREAD_CONTROLLER_H
 
-#include "DllMacro.h"
-
 #include <QPointer>
 #include <QThread>
 
 class WebSocket;
 
-class DLLEXPORT WebSocketThreadController : public QThread
+class WebSocketThreadController : public QThread
 {
     Q_OBJECT
 
@@ -34,6 +32,7 @@ public:
     virtual ~WebSocketThreadController();
 
     void setUrl( const QString &url );
+    void setAuthorizationHeader( const QString &authorizationHeader );
 
 protected:
     void run();
@@ -44,6 +43,7 @@ private:
     QPointer< WebSocket > m_webSocket;
     QPointer< QObject > m_sip;
     QString m_url;
+    QString m_authorizationHeader;
 };
 
 #endif

@@ -24,12 +24,9 @@
 #include "Typedefs.h"
 
 #include <QObject>
+#include <QPixmap>
 #include <QSet>
 #include <QStringList>
-
-#ifndef ENABLE_HEADLESS
-    #include <QPixmap>
-#endif
 
 class NetworkReply;
 
@@ -55,7 +52,7 @@ public:
     static bool handlesUrl( const QString& url );
 
 public slots:
-    void lookupFinished();
+    void lookupFinished( const QUrl& url );
 
 signals:
     void urls( const QStringList& urls );
@@ -64,9 +61,7 @@ private:
     void lookupUrl( const QString& url );
     void checkFinished();
 
-#ifndef ENABLE_HEADLESS
     static QPixmap pixmap();
-#endif
 
     QStringList m_links;
     QSet< NetworkReply* > m_queries;

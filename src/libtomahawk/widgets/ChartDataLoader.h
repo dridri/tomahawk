@@ -19,9 +19,6 @@
 #define CHARTDATALOADER_H
 
 #include "infosystem/InfoSystem.h"
-#include "Query.h"
-#include "Artist.h"
-#include "Album.h"
 
 #include <QObject>
 
@@ -33,7 +30,7 @@ namespace Tomahawk
   into their respective tomahawk types. Move this object to a thread
   and listen to the result signals.
 */
-class ChartDataLoader : public QObject
+class DLLEXPORT ChartDataLoader : public QObject
 {
     Q_OBJECT
 public:

@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2013,      Uwe L. Korn <uwelk@xhochy.com>
  *
@@ -29,23 +29,19 @@
 #include "database/DatabaseCommand_AddSource.h"
 #include "database/DatabaseCommand_CollectionStats.h"
 #include "database/DatabaseCommand_LoadAllSources.h"
+#include "database/DatabaseCommand_SocialAction.h"
 #include "database/DatabaseCommand_SourceOffline.h"
 #include "database/DatabaseCommand_UpdateSearchIndex.h"
 #include "database/DatabaseImpl.h"
 #include "database/Database.h"
+#include "utils/Logger.h"
+#include "sip/PeerInfo.h"
+#include "utils/TomahawkCache.h"
+#include "utils/TomahawkUtilsGui.h"
 
 #include <QCoreApplication>
 #include <QtAlgorithms>
-
-#include "utils/TomahawkCache.h"
-#include "database/DatabaseCommand_SocialAction.h"
-
-#ifndef ENABLE_HEADLESS
-    #include "utils/TomahawkUtilsGui.h"
-#endif
-
-#include "utils/Logger.h"
-#include "sip/PeerInfo.h"
+#include <QPainter>
 
 using namespace Tomahawk;
 
@@ -56,9 +52,7 @@ Source::Source( int id, const QString& nodeId )
 {
     Q_D( Source );
     d->scrubFriendlyName = qApp->arguments().contains( "--demo" );
-
-    if ( id == 0 )
-        d->isLocal = true;
+    d->isLocal = ( id == 0 );
 
     d->currentTrackTimer.setSingleShot( true );
     connect( &d->currentTrackTimer, SIGNAL( timeout() ), this, SLOT( trackTimerFired() ) );
@@ -81,12 +75,14 @@ Source::~Source()
     delete d_ptr;
 }
 
+
 bool
 Source::isLocal() const
 {
     Q_D( const Source );
     return d->isLocal;
 }
+
 
 bool
 Source::isOnline() const
@@ -105,7 +101,11 @@ Source::setControlConnection( ControlConnection* cc )
     if ( !d->cc.isNull() && d->cc->isReady() && d->cc->isRunning() )
     {
         const QString& nodeid = Database::instance()->impl()->dbid();
-        peerInfoDebug( (*cc->peerInfos().begin()) ) << Q_FUNC_INFO << "Comparing" << cc->id() << "and" << nodeid << "to detect duplicate connection, outbound:" << cc->outbound();
+        peerInfoDebug( (*cc->peerInfos().begin()) ) << Q_FUNC_INFO
+                                                    << "Comparing" << cc->id()
+                                                    << "and" << nodeid
+                                                    << "to detect duplicate connections"
+                                                    << "outbound:" << cc->outbound();
         // If our nodeid is "higher" than the other, we prefer inbound connection, else outbound.
         if ( ( cc->id() < nodeid && d->cc->outbound() ) || ( cc->id() > nodeid && !d->cc->outbound() ) )
         {
@@ -162,9 +162,9 @@ Source::dbCollection() const
         }
     }
 
-    collection_ptr tmp;
-    return tmp;
+    return collection_ptr();
 }
+
 
 QList<collection_ptr>
 Source::collections() const
@@ -281,9 +281,8 @@ Source::friendlyNamesLessThan( const QString& first, const QString& second )
 }
 
 
-#ifndef ENABLE_HEADLESS
 QPixmap
-Source::avatar( TomahawkUtils::ImageMode style, const QSize& size )
+Source::avatar( TomahawkUtils::ImageMode style, const QSize& size, bool defaultAvatarFallback )
 {
     Q_D( Source );
 
@@ -295,32 +294,49 @@ Source::avatar( TomahawkUtils::ImageMode style, const QSize& size )
         }
     }
 
-    if ( d->avatarLoaded )
-    {
-        if ( d->avatar )
-            return *d->avatar;
-        else
-            return QPixmap();
-    }
-
     // Try to get the avatar from the cache
     // Hint: We store the avatar for each xmpp peer using its contactId, the dbFriendlyName is a contactId of a peer
-    d->avatarLoaded = true;
-    QByteArray avatarBuffer = TomahawkUtils::Cache::instance()->getData( "Sources", dbFriendlyName() ).toByteArray();
-    if ( !avatarBuffer.isNull() )
+    if ( !d->avatarLoaded )
     {
-        tDebug() << Q_FUNC_INFO << QThread::currentThread();
-        QPixmap avatar;
-        avatar.loadFromData( avatarBuffer );
-        avatarBuffer.clear();
+        d->avatarLoaded = true;
+        QByteArray avatarBuffer = TomahawkUtils::Cache::instance()->getData( "Sources", dbFriendlyName() ).toByteArray();
+        if ( !avatarBuffer.isNull() )
+        {
+            QPixmap avatar;
+            avatar.loadFromData( avatarBuffer );
+            avatarBuffer.clear();
 
-        d->avatar = new QPixmap( TomahawkUtils::createRoundedImage( avatar, QSize( 0, 0 ) ) );
-        return *d->avatar;
+            d->avatar = new QPixmap( TomahawkUtils::createRoundedImage( avatar, QSize( 0, 0 ) ) );
+        }
     }
 
-    return QPixmap();
+    if ( d->avatarLoaded && d->avatar )
+    {
+        return d->avatar->scaled( size, Qt::KeepAspectRatio, Qt::SmoothTransformation );
+    }
+
+    if ( defaultAvatarFallback )
+    {
+        QPixmap px = TomahawkUtils::defaultPixmap( TomahawkUtils::DefaultSourceAvatar, style, size );
+        QPainter p( &px );
+        p.setRenderHint( QPainter::Antialiasing );
+
+        QFont f = p.font();
+        f.setPixelSize( px.size().height() - 8 );
+        p.setFont( f );
+        p.setPen( Qt::white );
+
+        const QString initial = friendlyName().left( 1 ).toUpper();
+        const QFontMetricsF fm( f );
+        const qreal w = fm.width( initial );
+        const QPointF pxp = QPointF( px.rect().topLeft() ) + QPointF( px.rect().width() / 2.0 - w / 2.0, px.rect().height() / 2.0 - fm.height() / 2.0 + fm.ascent() );
+
+        p.drawText( pxp, initial );
+        return px;
+    }
+    else
+        return QPixmap();
 }
-#endif
 
 
 void
@@ -391,6 +407,7 @@ Source::removeCollection( const collection_ptr& c )
     emit collectionRemoved( c );
 }
 
+
 int
 Source::id() const
 {
@@ -399,6 +416,7 @@ Source::id() const
     return d->id;
 }
 
+
 ControlConnection*
 Source::controlConnection() const
 {
@@ -406,6 +424,7 @@ Source::controlConnection() const
 
     return d->cc.data();
 }
+
 
 void
 Source::handleDisconnect( Tomahawk::Accounts::Account*, Tomahawk::Accounts::AccountManager::DisconnectReason reason )
@@ -440,12 +459,12 @@ Source::setOffline()
 
 
 void
-Source::setOnline()
+Source::setOnline( bool force )
 {
     Q_D( Source );
 
     tDebug( LOGVERBOSE ) << Q_FUNC_INFO << friendlyName();
-    if ( d->online )
+    if ( d->online && !force )
         return;
 
     d->online = true;
@@ -562,6 +581,7 @@ Source::trackCount() const
     return d->stats.value( "numfiles", 0 ).toUInt();
 }
 
+
 query_ptr
 Source::currentTrack() const
 {
@@ -584,6 +604,7 @@ Source::playlistInterface()
 
     return d->playlistInterface;
 }
+
 
 QSharedPointer<QMutexLocker>
 Source::acquireLock()
@@ -617,7 +638,7 @@ Source::onPlaybackFinished( const Tomahawk::track_ptr& track, const Tomahawk::Pl
 {
     Q_D( Source );
 
-    tDebug() << Q_FUNC_INFO << track->toString();
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << track->toString();
     emit playbackFinished( track, log );
 
     d->currentTrack.clear();
@@ -799,7 +820,7 @@ Source::textStatus() const
 
     if ( !currentTrack().isNull() )
     {
-        return currentTrack()->queryTrack()->artist() + " - " + currentTrack()->queryTrack()->track();
+        return currentTrack()->queryTrack()->track() + " - " + currentTrack()->queryTrack()->artist();
     }
 
     // do not use isOnline() here - it will always return true for the local source
@@ -812,6 +833,7 @@ Source::textStatus() const
         return tr( "Offline" );
     }
 }
+
 
 DBSyncConnectionState
 Source::state() const

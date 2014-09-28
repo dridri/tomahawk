@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2011-2012, Leo Franchi            <lfranchi@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -34,16 +34,18 @@
 #include "audio/AudioEngine.h"
 #include "playlist/PlayableItem.h"
 #include "playlist/PlayableProxyModel.h"
+#include "widgets/HoverControls.h"
 #include "widgets/ImageButton.h"
 #include "utils/TomahawkStyle.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/PixmapDelegateFader.h"
 #include "utils/Closure.h"
 #include "utils/AnimatedSpinner.h"
+#include "utils/DpiScaler.h"
 #include "utils/Logger.h"
 
 namespace {
-    static const int FADE_DURATION = 200;
+    static const int FADE_DURATION = 400;
 };
 
 
@@ -51,6 +53,8 @@ GridItemDelegate::GridItemDelegate( QAbstractItemView* parent, PlayableProxyMode
     : QStyledItemDelegate( (QObject*)parent )
     , m_view( parent )
     , m_model( proxy )
+    , m_showPosition( false )
+    , m_margin( TomahawkUtils::DpiScaler::scaledY( parent, 32 ) )
 {
     if ( m_view && m_view->metaObject()->indexOfSignal( "modelChanged()" ) > -1 )
         connect( m_view, SIGNAL( modelChanged() ), this, SLOT( modelChanged() ) );
@@ -80,6 +84,13 @@ GridItemDelegate::sizeHint( const QStyleOptionViewItem& option, const QModelInde
 
 
 void
+GridItemDelegate::setShowPosition( bool enabled )
+{
+    m_showPosition = enabled;
+}
+
+
+void
 GridItemDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const
 {
     PlayableItem* item = m_model->sourceModel()->itemFromIndex( m_model->mapToSource( index ) );
@@ -88,9 +99,11 @@ GridItemDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option, 
 
     QStyleOptionViewItemV4 opt = option;
     initStyleOption( &opt, QModelIndex() );
-    qApp->style()->drawControl( QStyle::CE_ItemViewItem, &opt, painter );
+//    qApp->style()->drawControl( QStyle::CE_ItemViewItem, &opt, painter );
 
     QRect r = option.rect;
+    r.setHeight( r.width() );
+
     QString top, bottom;
     if ( !item->album().isNull() )
     {
@@ -114,21 +127,21 @@ GridItemDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option, 
     }
 
     painter->save();
-    painter->setRenderHint( QPainter::Antialiasing );
+    painter->setRenderHint( QPainter::TextAntialiasing );
 
     if ( !m_covers.contains( index ) )
     {
         if ( !item->album().isNull() )
         {
-            m_covers.insert( index, QSharedPointer< Tomahawk::PixmapDelegateFader >( new Tomahawk::PixmapDelegateFader( item->album(), r.size(), TomahawkUtils::Grid ) ) );
+            m_covers.insert( index, QSharedPointer< Tomahawk::PixmapDelegateFader >( new Tomahawk::PixmapDelegateFader( item->album(), r.size(), TomahawkUtils::Grid, false ) ) );
         }
         else if ( !item->artist().isNull() )
         {
-            m_covers.insert( index, QSharedPointer< Tomahawk::PixmapDelegateFader >( new Tomahawk::PixmapDelegateFader( item->artist(), r.size(), TomahawkUtils::Grid ) ) );
+            m_covers.insert( index, QSharedPointer< Tomahawk::PixmapDelegateFader >( new Tomahawk::PixmapDelegateFader( item->artist(), r.size(), TomahawkUtils::Grid, false ) ) );
         }
         else
         {
-            m_covers.insert( index, QSharedPointer< Tomahawk::PixmapDelegateFader >( new Tomahawk::PixmapDelegateFader( item->query(), r.size(), TomahawkUtils::Grid ) ) );
+            m_covers.insert( index, QSharedPointer< Tomahawk::PixmapDelegateFader >( new Tomahawk::PixmapDelegateFader( item->query(), r.size(), TomahawkUtils::Grid, false ) ) );
         }
 
         NewClosure( m_covers[ index ], SIGNAL( repaintRequest() ),
@@ -138,31 +151,39 @@ GridItemDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option, 
     QSharedPointer< Tomahawk::PixmapDelegateFader > fader = m_covers[ index ];
     if ( fader->size() != r.size() )
         fader->setSize( r.size() );
-
     const QPixmap cover = fader->currentPixmap();
-    painter->drawPixmap( r, cover );
 
-    qreal opacity = -1.;
+    qreal opacity = -1.0;
+    qreal pct = -1.0;
     if ( m_hoverFaders.contains( index ) )
     {
-        const qreal pct = ( m_hoverFaders[ index ]->currentFrame() / 100.0 );
-        opacity = 0.15 - pct * 0.15;
+        pct = ( m_hoverFaders[ index ]->currentFrame() / 100.0 );
+        opacity = 1.0 - pct * 0.70;
     }
     else if ( m_hoverIndex == index )
     {
-        opacity = 0.15;
+        opacity = 0.3;
+        pct = 1.0;
     }
-
     if ( opacity > -1.0 )
     {
         painter->save();
 
-        painter->setPen( TomahawkStyle::HOVER_GLOW );
-        painter->setBrush( TomahawkStyle::HOVER_GLOW );
-        painter->setOpacity( opacity );
+        const int cropIn = pct * ( (qreal)cover.width() * 0.10 );
+        const QRect crop = cover.rect().adjusted( cropIn, cropIn, -cropIn, -cropIn );
+
+        painter->drawPixmap( r, cover.copy( crop ).scaled( r.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation ) );
+
+        painter->setOpacity( 1.0 - opacity );
+        painter->setPen( Qt::transparent );
+        painter->setBrush( Qt::black );
         painter->drawRect( r );
 
         painter->restore();
+    }
+    else
+    {
+        painter->drawPixmap( r, cover );
     }
 
     QTextOption to;
@@ -170,62 +191,95 @@ GridItemDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option, 
 
     QString text;
     QFont font = opt.font;
-    font.setPointSize( TomahawkUtils::defaultFontSize() );
-    QFont boldFont = font;
-    boldFont.setBold( true );
-    boldFont.setPointSize( TomahawkUtils::defaultFontSize() + 1 );
+    font.setPointSize( TomahawkUtils::defaultFontSize() + 2 );
+    QFont smallFont = font;
+    smallFont.setPointSize( TomahawkUtils::defaultFontSize() );
 
-    int bottomHeight = QFontMetrics( font ).boundingRect( bottom ).height();
-    int topHeight = QFontMetrics( boldFont ).boundingRect( top ).height();
-    int frameHeight = bottomHeight + topHeight + 10;
-
-    QRect gradientRect = r.adjusted( 0, r.height() - frameHeight * 1.2, 0, 0 );
-    QColor gradientColor = opt.palette.background().color();
-    gradientColor.setAlphaF( 0.66 );
-
-    painter->save();
-    painter->setPen( Qt::transparent );
-    painter->setBrush( gradientColor );
-    painter->drawRect( gradientRect );
-    painter->restore();
-
-    painter->setPen( TomahawkStyle::SELECTION_FOREGROUND );
-
-    QRect textRect = option.rect.adjusted( 6, option.rect.height() - frameHeight, -6, -6 );
+    QRect textRect = option.rect.adjusted( 0, r.height() + m_margin / 4, 0, -m_margin / 2 + m_margin / 8 );
     bool oneLiner = false;
     if ( bottom.isEmpty() )
         oneLiner = true;
 
-    painter->setFont( boldFont );
+    painter->setPen( TomahawkStyle::SELECTION_FOREGROUND );
+    painter->setFont( font );
+    painter->setPen( Qt::black );
+    painter->setOpacity( 0.8 );
+
+    if ( m_showPosition )
+    {
+        painter->save();
+
+        if ( !oneLiner )
+        {
+            QFont figFont = font;
+            figFont.setPixelSize( textRect.height() - m_margin / 8 );
+            painter->setFont( figFont );
+        }
+
+        const QString fig = QString::number( index.row() + 1 );
+        painter->drawText( textRect, fig, QTextOption( Qt::AlignLeft | Qt::AlignTop ) );
+
+        textRect.adjust( painter->fontMetrics().boundingRect( textRect, Qt::AlignLeft | Qt::AlignTop, fig ).width() + m_margin / 4, 0, 0, 0 );
+        painter->restore();
+    }
+
     if ( oneLiner )
     {
-        to.setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
-        text = painter->fontMetrics().elidedText( top, Qt::ElideRight, textRect.width() - 3 );
+        // If the user is hovering over an artist rect, draw a background so they knows it's clickable
+        if ( m_hoveringOverArtist == index )
+        {
+            QFont f = painter->font();
+            f.setUnderline( true );
+            painter->setFont( f );
+        }
+
+        to.setAlignment( Qt::AlignLeft | Qt::AlignTop );
+        text = painter->fontMetrics().elidedText( top, Qt::ElideRight, textRect.width() - m_margin / 4 );
         painter->drawText( textRect, text, to );
+
+        // Calculate rect of artist on-hover button click area
+        m_artistNameRects[ index ] = painter->fontMetrics().boundingRect( textRect, Qt::AlignLeft | Qt::AlignTop, text );
     }
     else
     {
-        to.setAlignment( Qt::AlignHCenter | Qt::AlignTop );
-        text = painter->fontMetrics().elidedText( top, Qt::ElideRight, textRect.width() - 3 );
-        painter->drawText( textRect, text, to );
-
-        painter->setFont( font );
-        // If the user is hovering over an artist rect, draw a background so she knows it's clickable
-        QRect r = textRect;
-        r.setTop( r.bottom() - painter->fontMetrics().height() );
-        r.adjust( 4, 0, -4, -1 );
-        if ( m_hoveringOver == index )
+        painter->save();
+        // If the user is hovering over an album rect, underline the album name
+        if ( m_hoveringOverAlbum == index )
         {
-            TomahawkUtils::drawQueryBackground( painter, r );
-            painter->setPen( TomahawkStyle::SELECTION_FOREGROUND );
+            QFont f = painter->font();
+            f.setUnderline( true );
+            painter->setFont( f );
         }
 
-        to.setAlignment( Qt::AlignHCenter | Qt::AlignBottom );
-        text = painter->fontMetrics().elidedText( bottom, Qt::ElideRight, textRect.width() - 10 );
-        painter->drawText( textRect.adjusted( 5, -1, -5, -1 ), text, to );
+        to.setAlignment( Qt::AlignLeft | Qt::AlignTop );
+        text = painter->fontMetrics().elidedText( top, Qt::ElideRight, textRect.width() - m_margin / 4 );
+        painter->drawText( textRect, text, to );
+
+        if ( item->album() )
+        {
+            // Calculate rect of album on-hover button click area
+            m_albumNameRects[ index ] = painter->fontMetrics().boundingRect( textRect, Qt::AlignLeft | Qt::AlignTop, text );
+        }
+        painter->restore();
+
+        painter->setOpacity( 0.6 );
+        painter->setFont( smallFont );
+
+        // If the user is hovering over an artist rect, underline the artist name
+        if ( m_hoveringOverArtist == index )
+        {
+            QFont f = painter->font();
+            f.setUnderline( true );
+            painter->setFont( f );
+        }
+
+        textRect.adjust( 0, painter->fontMetrics().height() + m_margin / 16, 0, 0 );
+        to.setAlignment( Qt::AlignLeft | Qt::AlignBottom );
+        text = painter->fontMetrics().elidedText( bottom, Qt::ElideRight, textRect.width() - m_margin / 4 );
+        painter->drawText( textRect, text, to );
 
         // Calculate rect of artist on-hover button click area
-        m_artistNameRects[ index ] = r;
+        m_artistNameRects[ index ] = painter->fontMetrics().boundingRect( textRect, Qt::AlignLeft | Qt::AlignBottom, text );
     }
 
     painter->restore();
@@ -235,12 +289,17 @@ GridItemDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option, 
 void
 GridItemDelegate::onPlayClicked( const QPersistentModelIndex& index )
 {
-    QPoint pos = m_playButton[ index ]->pos();
     clearButtons();
 
     AnimatedSpinner* spinner = new AnimatedSpinner( m_view );
     spinner->setAutoCenter( false );
     spinner->fadeIn();
+
+    QRect r = m_view->visualRect( index );
+    r.setHeight( r.width() );
+    QPoint pos = r.center() - QPoint( ( spinner->width() ) / 2 - 1,
+                                      ( spinner->height() ) / 2 - 1 );
+
     spinner->move( pos );
     spinner->setFocusPolicy( Qt::NoFocus );
     spinner->installEventFilter( this );
@@ -249,7 +308,7 @@ GridItemDelegate::onPlayClicked( const QPersistentModelIndex& index )
 
     PlayableItem* item = m_model->sourceModel()->itemFromIndex( m_model->mapToSource( index ) );
 
-    NewClosure(  AudioEngine::instance(), SIGNAL( started( Tomahawk::result_ptr ) ),
+    NewClosure( AudioEngine::instance(), SIGNAL( started( Tomahawk::result_ptr ) ),
                 const_cast<GridItemDelegate*>(this), SLOT( onPlaybackStarted( QPersistentModelIndex ) ), QPersistentModelIndex( index ) );
 
     if ( item )
@@ -276,78 +335,124 @@ GridItemDelegate::editorEvent( QEvent* event, QAbstractItemModel* model, const Q
          event->type() != QEvent::Leave )
         return false;
 
+    const QMouseEvent* ev = static_cast< QMouseEvent* >( event );
     bool hoveringArtist = false;
+    bool hoveringAlbum = false;
     if ( m_artistNameRects.contains( index ) )
     {
         const QRect artistNameRect = m_artistNameRects[ index ];
-        const QMouseEvent* ev = static_cast< QMouseEvent* >( event );
         hoveringArtist = artistNameRect.contains( ev->pos() );
     }
+    if ( m_albumNameRects.contains( index ) )
+    {
+        const QRect albumNameRect = m_albumNameRects[ index ];
+        hoveringAlbum = albumNameRect.contains( ev->pos() );
+    }
+
+    QRect coverRect = m_view->visualRect( index );
+    coverRect.setHeight( coverRect.width() );
+    const bool hoveringCover = coverRect.contains( ev->pos() );
 
     if ( event->type() == QEvent::MouseMove )
     {
-        if ( hoveringArtist )
+        if ( hoveringArtist || hoveringAlbum )
             m_view->setCursor( Qt::PointingHandCursor );
         else
             m_view->setCursor( Qt::ArrowCursor );
 
-        foreach ( const QModelIndex& idx, m_playButton.keys() )
+        foreach ( const QModelIndex& idx, m_hoverControls.keys() )
         {
             if ( index != idx )
-                m_playButton.take( idx )->deleteLater();
+                m_hoverControls.take( idx )->deleteLater();
         }
 
-        if ( !m_playButton.contains( index ) && !m_spinner.contains( index ) && !m_pauseButton.contains( index ) )
+        if ( hoveringCover && !m_hoverControls.contains( index ) && !m_spinner.contains( index ) )
         {
-            foreach ( ImageButton* button, m_playButton )
-                button->deleteLater();
-            m_playButton.clear();
+            foreach ( HoverControls* control, m_hoverControls )
+                control->deleteLater();
+            m_hoverControls.clear();
 
-            ImageButton* button = new ImageButton( m_view );
-            button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PlayButton, TomahawkUtils::Original, QSize( 48, 48 ) ) );
-            button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PlayButtonPressed, TomahawkUtils::Original, QSize( 48, 48 ) ), QIcon::Off, QIcon::Active );
-            button->setFixedSize( 48, 48 );
-            button->move( option.rect.center() - QPoint( 23, 23 ) );
-            button->setContentsMargins( 0, 0, 0, 0 );
-            button->setFocusPolicy( Qt::NoFocus );
-            button->installEventFilter( this );
-            button->show();
+            QRect cRect = option.rect;
+            cRect.setHeight( cRect.width() );
 
-            NewClosure( button, SIGNAL( clicked( bool ) ),
+            HoverControls* controls = new HoverControls( m_view );
+            controls->setFixedSize( m_margin * 2, m_margin + m_margin / 4 );
+            controls->move( cRect.center() - QPoint( controls->width() / 2 -1, controls->height() / 2 -1 ) );
+            controls->setContentsMargins( 0, 0, 0, 0 );
+            controls->setFocusPolicy( Qt::NoFocus );
+            controls->installEventFilter( this );
+            controls->show();
+
+            NewClosure( controls, SIGNAL( play() ),
                         const_cast<GridItemDelegate*>(this), SLOT( onPlayClicked( QPersistentModelIndex ) ), QPersistentModelIndex( index ) );
 
-            m_playButton[ index ] = button;
+            m_hoverControls[ index ] = controls;
         }
 
-        if ( m_hoveringOver != index || ( !hoveringArtist && m_hoveringOver.isValid() ) )
+        if ( m_hoveringOverArtist != index || ( !hoveringArtist && m_hoveringOverArtist.isValid() ) )
         {
-            emit updateIndex( m_hoveringOver );
+            emit updateIndex( m_hoveringOverArtist );
 
             if ( hoveringArtist )
-                m_hoveringOver = index;
+                m_hoveringOverArtist = index;
             else
-                m_hoveringOver = QPersistentModelIndex();
+                m_hoveringOverArtist = QPersistentModelIndex();
+
+            emit updateIndex( index );
+        }
+        if ( m_hoveringOverAlbum != index || ( !hoveringAlbum && m_hoveringOverAlbum.isValid() ) )
+        {
+            emit updateIndex( m_hoveringOverAlbum );
+
+            if ( hoveringAlbum )
+                m_hoveringOverAlbum = index;
+            else
+                m_hoveringOverAlbum = QPersistentModelIndex();
 
             emit updateIndex( index );
         }
 
-        if ( m_hoverIndex != index )
+        if ( m_hoverIndex != index || !hoveringCover )
         {
             if ( m_hoverIndex.isValid() )
             {
-                QTimeLine* fadeOut = createTimeline( QTimeLine::Forward );
+                int startFrame = 100;
+                if ( m_hoverFaders.contains( m_hoverIndex ) )
+                {
+                    QTimeLine* oldFader = m_hoverFaders.take( m_hoverIndex );
+                    startFrame = oldFader->currentFrame();
+                    oldFader->deleteLater();
+                }
+
+                QTimeLine* fadeOut = createTimeline( QTimeLine::Backward, startFrame );
                 _detail::Closure* c = NewClosure( fadeOut, SIGNAL( frameChanged( int ) ), this, SLOT( fadingFrameChanged( QPersistentModelIndex ) ), QPersistentModelIndex( m_hoverIndex ) );
                 c->setAutoDelete( false );
                 c = NewClosure( fadeOut, SIGNAL( finished() ), this, SLOT( fadingFrameFinished( QPersistentModelIndex ) ), QPersistentModelIndex( m_hoverIndex ) );
                 c->setAutoDelete( false );
+
                 m_hoverFaders[ m_hoverIndex ] = fadeOut;
                 fadeOut->start();
             }
-
             emit updateIndex( m_hoverIndex );
-            m_hoverIndex = index;
 
-            QTimeLine* fadeIn = createTimeline( QTimeLine::Backward );
+            foreach ( HoverControls* controls, m_hoverControls )
+                controls->deleteLater();
+            m_hoverControls.clear();
+            m_hoverIndex = QPersistentModelIndex();
+        }
+
+        if ( hoveringCover && m_hoverIndex != index )
+        {
+            m_hoverIndex = index;
+            int startFrame = 0;
+            if ( m_hoverFaders.contains( index ) )
+            {
+                QTimeLine* oldFader = m_hoverFaders.take( index );
+                startFrame = oldFader->currentFrame();
+                oldFader->deleteLater();
+            }
+
+            QTimeLine* fadeIn = createTimeline( QTimeLine::Forward, startFrame );
             _detail::Closure* c = NewClosure( fadeIn, SIGNAL( frameChanged( int ) ), this, SLOT( fadingFrameChanged( QPersistentModelIndex ) ), QPersistentModelIndex( index ) );
             c->setAutoDelete( false );
             c = NewClosure( fadeIn, SIGNAL( finished() ), this, SLOT( fadingFrameFinished( QPersistentModelIndex ) ), QPersistentModelIndex( index ) );
@@ -378,6 +483,8 @@ GridItemDelegate::editorEvent( QEvent* event, QAbstractItemModel* model, const Q
                 ViewManager::instance()->show( item->query()->track()->artistPtr() );
             else if ( item->album() && item->album()->artist() )
                 ViewManager::instance()->show( item->album()->artist() );
+            else if ( item->artist() )
+                ViewManager::instance()->show( item->artist() );
 
             event->accept();
             return true;
@@ -385,6 +492,29 @@ GridItemDelegate::editorEvent( QEvent* event, QAbstractItemModel* model, const Q
         else if ( event->type() == QEvent::MouseButtonPress )
         {
             // Stop the whole album from having a down click action as we just want the artist name to be clicked
+            event->accept();
+            return true;
+        }
+    }
+    if ( hoveringAlbum )
+    {
+        if ( event->type() == QEvent::MouseButtonRelease )
+        {
+            PlayableItem* item = m_model->sourceModel()->itemFromIndex( m_model->mapToSource( index ) );
+            if ( !item )
+                return false;
+
+            if ( item->query() )
+                ViewManager::instance()->show( item->query()->track()->albumPtr() );
+            else if ( item->album() )
+                ViewManager::instance()->show( item->album() );
+
+            event->accept();
+            return true;
+        }
+        else if ( event->type() == QEvent::MouseButtonPress )
+        {
+            // Stop the whole album from having a down click action as we just want the album name to be clicked
             event->accept();
             return true;
         }
@@ -398,7 +528,9 @@ void
 GridItemDelegate::modelChanged()
 {
     m_artistNameRects.clear();
-    m_hoveringOver = QPersistentModelIndex();
+    m_albumNameRects.clear();
+    m_hoveringOverArtist = QPersistentModelIndex();
+    m_hoveringOverAlbum = QPersistentModelIndex();
     m_hoverIndex = QPersistentModelIndex();
 
     clearButtons();
@@ -425,17 +557,21 @@ GridItemDelegate::onViewChanged()
     foreach ( const QPersistentModelIndex& index, m_spinner.keys() )
     {
         QRect rect = m_view->visualRect( index );
-        m_spinner.value( index )->move( rect.center() - QPoint( 23, 23 ) );
+        rect.setHeight( rect.width() );
+
+        QWidget* spinner = m_spinner.value( index );
+        QPoint pos = rect.center() - QPoint( ( spinner->width() ) / 2 - 1,
+                                             ( spinner->height() ) / 2 - 1 );
+
+        spinner->move( pos );
     }
-    foreach ( const QPersistentModelIndex& index, m_playButton.keys() )
+    foreach ( const QPersistentModelIndex& index, m_hoverControls.keys() )
     {
         QRect rect = m_view->visualRect( index );
-        m_playButton.value( index )->move( rect.center() - QPoint( 23, 23 ) );
-    }
-    foreach ( const QPersistentModelIndex& index, m_pauseButton.keys() )
-    {
-        QRect rect = m_view->visualRect( index );
-        m_pauseButton.value( index )->move( rect.center() - QPoint( 23, 23 ) );
+        rect.setHeight( rect.width() );
+
+        HoverControls* controls = m_hoverControls.value( index );
+        controls->move( rect.center() - QPoint( controls->width() / 2 -1, controls->height() / 2 -1 ) );
     }
 }
 
@@ -450,56 +586,15 @@ GridItemDelegate::onPlaybackFinished()
 
 
 void
-GridItemDelegate::onPlayPauseHover( const QPersistentModelIndex& index )
-{
-    if( m_pauseButton.contains( index ) )
-    {
-        updatePlayPauseButton( m_pauseButton[ index ] );
-    }
-}
-
-
-void
-GridItemDelegate::updatePlayPauseButton( ImageButton* button, bool setState )
-{
-    if ( button )
-    {
-        if ( button->property( "paused" ).toBool() )
-        {
-            button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PauseButton, TomahawkUtils::Original, QSize( 48, 48 ) ) );
-            button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PauseButtonPressed, TomahawkUtils::Original, QSize( 48, 48 ) ), QIcon::Off, QIcon::Active );
-        }
-        else
-        {
-            button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PlayButton, TomahawkUtils::Original, QSize( 48, 48 ) ) );
-            button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PlayButtonPressed, TomahawkUtils::Original, QSize( 48, 48 ) ), QIcon::Off, QIcon::Active );
-        }
-
-        if ( setState )
-            button->setProperty( "paused", !button->property( "paused" ).toBool() );
-    }
-}
-
-
-void
-GridItemDelegate::onPlayPausedClicked()
-{
-    ImageButton* button = qobject_cast< ImageButton* >( QObject::sender() );
-    updatePlayPauseButton( button, true );
-}
-
-
-void
 GridItemDelegate::onPlaybackStarted( const QPersistentModelIndex& index )
 {
-    if( m_spinner.contains( index ) )
+    if ( m_spinner.contains( index ) )
     {
         LoadingSpinner* spinner = static_cast<LoadingSpinner*>(m_spinner[ index ]);
         spinner->fadeOut();
     }
 
     clearButtons();
-    createPauseButton( index );
 
     emit startedPlaying( index );
 }
@@ -508,12 +603,10 @@ GridItemDelegate::onPlaybackStarted( const QPersistentModelIndex& index )
 void
 GridItemDelegate::clearButtons()
 {
-    foreach ( ImageButton* button, m_playButton )
-        button->deleteLater();
-    m_playButton.clear();
-    foreach ( ImageButton* button, m_pauseButton )
-        button->deleteLater();
-    m_pauseButton.clear();
+    foreach ( HoverControls* control, m_hoverControls )
+        control->deleteLater();
+    m_hoverControls.clear();
+
     foreach ( QWidget* widget, m_spinner )
         widget->deleteLater();
     m_spinner.clear();
@@ -536,35 +629,40 @@ GridItemDelegate::onCurrentIndexChanged()
 void
 GridItemDelegate::resetHoverIndex()
 {
-    foreach ( ImageButton* button, m_playButton )
-        button->deleteLater();
-    m_playButton.clear();
+    foreach ( HoverControls* controls, m_hoverControls )
+        controls->deleteLater();
+    m_hoverControls.clear();
 
-    QModelIndex idx = m_hoveringOver;
-    m_hoveringOver = QPersistentModelIndex();
+    if ( m_hoverIndex.isValid() )
+    {
+        int startFrame = 100;
+        if ( m_hoverFaders.contains( m_hoverIndex ) )
+        {
+            QTimeLine* oldFader = m_hoverFaders.take( m_hoverIndex );
+            startFrame = oldFader->currentFrame();
+            oldFader->deleteLater();
+        }
+
+        QTimeLine* fadeOut = createTimeline( QTimeLine::Backward, startFrame );
+        _detail::Closure* c = NewClosure( fadeOut, SIGNAL( frameChanged( int ) ), this, SLOT( fadingFrameChanged( QPersistentModelIndex ) ), QPersistentModelIndex( m_hoverIndex ) );
+        c->setAutoDelete( false );
+        c = NewClosure( fadeOut, SIGNAL( finished() ), this, SLOT( fadingFrameFinished( QPersistentModelIndex ) ), QPersistentModelIndex( m_hoverIndex ) );
+        c->setAutoDelete( false );
+
+        m_hoverFaders[ m_hoverIndex ] = fadeOut;
+        fadeOut->start();
+    }
+    emit updateIndex( m_hoverIndex );
+
     m_hoverIndex = QPersistentModelIndex();
+
+    QModelIndex idx = m_hoveringOverArtist;
+    m_hoveringOverArtist = QPersistentModelIndex();
     doUpdateIndex( idx );
-}
 
-
-void
-GridItemDelegate::createPauseButton( const QPersistentModelIndex& index )
-{
-    ImageButton* button = new ImageButton( m_view );
-    button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PauseButton, TomahawkUtils::Original, QSize( 48, 48 ) ) );
-    button->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::PauseButtonPressed, TomahawkUtils::Original, QSize( 48, 48 ) ), QIcon::Off, QIcon::Active );
-    button->setFixedSize( 48, 48 );
-    button->move( m_view->visualRect( index ).center() - QPoint( 23, 23 ) );
-    button->setContentsMargins( 0, 0, 0, 0 );
-    button->setFocusPolicy( Qt::NoFocus );
-    button->installEventFilter( this );
-    button->setProperty( "paused", false );
-    button->show();
-
-    connect( button, SIGNAL( clicked( bool ) ), AudioEngine::instance(), SLOT( playPause() ) );
-    connect( button, SIGNAL( clicked( bool ) ), this, SLOT( onPlayPausedClicked() ) );
-
-    m_pauseButton[ index ] = button;
+    idx = m_hoveringOverAlbum;
+    m_hoveringOverAlbum = QPersistentModelIndex();
+    doUpdateIndex( idx );
 }
 
 
@@ -587,14 +685,29 @@ GridItemDelegate::fadingFrameFinished( const QPersistentModelIndex& idx )
 
 
 QTimeLine*
-GridItemDelegate::createTimeline( QTimeLine::Direction direction )
+GridItemDelegate::createTimeline( QTimeLine::Direction direction, int startFrame )
 {
-    QTimeLine* timeline = new QTimeLine( FADE_DURATION, this );
+    qreal dur = (qreal)FADE_DURATION * ( 1.0 - (qreal)startFrame / 100.0 );
+    if ( direction == QTimeLine::Backward )
+    {
+        dur = (qreal)FADE_DURATION * ( (qreal)startFrame / 100.0 );
+    }
+
+    QTimeLine* timeline = new QTimeLine( dur, this );
     timeline->setDirection( direction );
     timeline->setCurveShape( QTimeLine::LinearCurve );
-    timeline->setUpdateInterval( 30 );
-    timeline->setStartFrame( 0 );
-    timeline->setEndFrame( 100 );
+    timeline->setUpdateInterval( 20 );
+
+    if ( direction == QTimeLine::Forward )
+    {
+        timeline->setStartFrame( startFrame );
+        timeline->setEndFrame( 100 );
+    }
+    else
+    {
+        timeline->setStartFrame( 0 );
+        timeline->setEndFrame( startFrame );
+    }
 
     return timeline;
 }

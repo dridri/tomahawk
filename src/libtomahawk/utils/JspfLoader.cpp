@@ -19,9 +19,11 @@
 
 #include "JspfLoader.h"
 
+#include "utils/Json.h"
 #include "utils/Logger.h"
 #include "utils/NetworkReply.h"
 #include "utils/TomahawkUtils.h"
+#include "utils/NetworkAccessManager.h"
 
 #include "Playlist.h"
 #include "SourceList.h"
@@ -30,8 +32,6 @@
 #include <QApplication>
 #include <QDomDocument>
 #include <QMessageBox>
-
-#include <qjson/parser.h>
 
 using namespace Tomahawk;
 
@@ -61,8 +61,8 @@ JSPFLoader::load( const QUrl& url )
 {
     QNetworkRequest request( url );
 
-    Q_ASSERT( TomahawkUtils::nam() != 0 );
-    NetworkReply* reply = new NetworkReply( TomahawkUtils::nam()->get( request ) );
+    Q_ASSERT( Tomahawk::Utils::nam() != 0 );
+    NetworkReply* reply = new NetworkReply( Tomahawk::Utils::nam()->get( request ) );
 
     connect( reply, SIGNAL( finished() ), SLOT( networkLoadFinished() ) );
     connect( reply, SIGNAL( error( QNetworkReply::NetworkError ) ), SLOT( networkError( QNetworkReply::NetworkError ) ) );
@@ -124,13 +124,12 @@ JSPFLoader::networkError( QNetworkReply::NetworkError e )
 void
 JSPFLoader::gotBody()
 {
-    QJson::Parser p;
     bool retOk;
-    QVariantMap wrapper = p.parse( m_body, &retOk ).toMap();
+    QVariantMap wrapper = TomahawkUtils::parseJson( m_body, &retOk ).toMap();
 
     if ( !retOk )
     {
-        tLog() << "Failed to parse jspf json:" << p.errorString() << "on line" << p.errorLine();
+        tLog() << "Failed to parse jspf json: " << m_body;
         return;
     }
 

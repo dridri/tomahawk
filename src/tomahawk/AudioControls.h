@@ -2,6 +2,7 @@
  *
  *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
+ *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -23,8 +24,9 @@
 #include "Result.h"
 #include "PlaylistInterface.h"
 #include "Query.h"
+#include "utils/DpiScaler.h"
+#include "widgets/BackgroundWidget.h"
 
-#include <QWidget>
 #include <QTimer>
 #include <QTimeLine>
 
@@ -38,7 +40,7 @@ namespace Ui
     class AudioControls;
 }
 
-class AudioControls : public QWidget
+class AudioControls : public BackgroundWidget, private TomahawkUtils::DpiScaler
 {
 Q_OBJECT
 
@@ -63,8 +65,8 @@ protected:
 private slots:
     void phononTickCheckTimeout();
 
-    void onPlaybackStarted( const Tomahawk::result_ptr& result );
-    void onPlaybackLoading( const Tomahawk::result_ptr& result );
+    void onPlaybackStarted( const Tomahawk::result_ptr result );
+    void onPlaybackLoading( const Tomahawk::result_ptr result );
     void onPlaybackPaused();
     void onPlaybackResumed();
     void onPlaybackSeeked( qint64 msec );
@@ -72,14 +74,12 @@ private slots:
 
     void onPlaybackTimer( qint64 msElapsed );
     void onVolumeChanged( int volume );
+    void onMutedChanged( bool muted );
     void onControlStateChanged();
 
     void onRepeatClicked();
     void onShuffleClicked();
 
-    void onArtistClicked();
-    void onAlbumClicked();
-    void onTrackClicked();
     void onSocialButtonClicked();
     void onLoveButtonClicked( bool );
     void onOwnerButtonClicked();
@@ -90,6 +90,8 @@ private slots:
     void onSocialActionsLoaded();
 
     void onInfoSystemPushTypesUpdated( Tomahawk::InfoSystem::InfoTypeSet supportedTypes );
+
+protected:
 
 private:
     void setCover();

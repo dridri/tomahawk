@@ -60,8 +60,15 @@ public:
     void setAutoEncrypt(bool on);
     bool autoEncrypt() const;
 
+    void setProtocol(QSsl::SslProtocol proto);
+    QSsl::SslProtocol protocol() const;
+
 protected:
+#if QT_VERSION >= 0x050000
+	virtual void incomingConnection(qintptr socketDescriptor);
+#else
     virtual void incomingConnection(int socketDescriptor);
+#endif
 
 private:
     QXT_DECLARE_PRIVATE(QxtSslServer)

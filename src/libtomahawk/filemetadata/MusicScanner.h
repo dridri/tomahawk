@@ -20,23 +20,24 @@
 #ifndef MUSICSCANNER_H
 #define MUSICSCANNER_H
 
-#include "TomahawkSettings.h"
+#include "database/Database.h"
 #include "database/DatabaseCommand.h"
+#include "TomahawkSettings.h"
 
 /* taglib */
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
 
-#include <QVariantMap>
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
-#include <QString>
-#include <QDateTime>
-#include <QTimer>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QPointer>
-#include <database/Database.h>
+#include <QString>
+#include <QThread>
+#include <QTimer>
+#include <QVariantMap>
 
 // descend dir tree comparing dir mtimes to last known mtime
 // emit signal for any dir with new content, so we can scan it.
@@ -93,7 +94,7 @@ private:
     QStringList m_paths;
 };
 
-class MusicScanner : public QObject
+class DLLEXPORT MusicScanner : public QObject
 {
 Q_OBJECT
 
@@ -101,8 +102,29 @@ public:
     enum ScanMode { DirScan, FileScan };
     enum ScanType { None, Full, Normal, File };
 
+    static QVariant readTags( const QFileInfo& fi );
+
     MusicScanner( MusicScanner::ScanMode scanMode, const QStringList& paths, quint32 bs = 0 );
     ~MusicScanner();
+
+    void showProgress( bool _showProgress );
+    bool showingProgress();
+
+    /**
+     * Specify if we want a dry run, i.e. not change any of the internal data stores.
+     *
+     * This is useful for testing if the scanner works (while Tomahawk is running).
+     */
+    void setDryRun( bool _dryRun );
+    bool dryRun();
+
+    /**
+     * Adjust the verbosity of logging.
+     *
+     * For example in verbose mode we will log each file we have scanned.
+     */
+    void setVerbose( bool _verbose );
+    bool verbose();
 
 signals:
     //void fileScanned( QVariantMap );
@@ -128,9 +150,11 @@ private:
 
     MusicScanner::ScanMode m_scanMode;
     QStringList m_paths;
-    QMap<QString, QString> m_ext2mime; // eg: mp3 -> audio/mpeg
     unsigned int m_scanned;
     unsigned int m_skipped;
+    bool m_showProgress;
+    bool m_dryRun;
+    bool m_verbose;
 
     QList<QString> m_skippedFiles;
     QMap<QString, QMap< unsigned int, unsigned int > > m_filemtimes;

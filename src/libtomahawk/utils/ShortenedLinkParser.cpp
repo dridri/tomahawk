@@ -19,8 +19,6 @@
 
 #include "ShortenedLinkParser.h"
 
-#include <qjson/parser.h>
-
 #include <QtNetwork/QNetworkAccessManager>
 
 #include "DropJobNotifier.h"
@@ -32,6 +30,7 @@
 #include "utils/NetworkReply.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/Logger.h"
+#include "utils/NetworkAccessManager.h"
 
 using namespace Tomahawk;
 
@@ -78,31 +77,33 @@ ShortenedLinkParser::lookupUrl( const QString& url )
     if ( cleaned.contains( "/#/s/" ) )
         cleaned.replace( "/#", "" );
 
-    NetworkReply* reply = new NetworkReply( TomahawkUtils::nam()->get( QNetworkRequest( QUrl( cleaned ) ) ) );
-    connect( reply, SIGNAL( finished() ), SLOT( lookupFinished() ) );
+    NetworkReply* reply = new NetworkReply( Tomahawk::Utils::nam()->get( QNetworkRequest( QUrl( cleaned ) ) ) );
+
+    // Deezer is doing a nasty redirect to /comingsoon in some countries.
+    // This removes valubale information from the URL.
+    reply->blacklistHostFromRedirection( "www.deezer.com" );
+    reply->blacklistHostFromRedirection( "deezer.com" );
+
+    connect( reply, SIGNAL( finished( QUrl ) ), SLOT( lookupFinished( QUrl ) ) );
 
     m_queries.insert( reply );
 
-#ifndef ENABLE_HEADLESS
     m_expandJob = new DropJobNotifier( pixmap(), "shortened", DropJob::Track, reply );
     JobStatusView::instance()->model()->addJob( m_expandJob );
-#endif
 }
 
 
 void
-ShortenedLinkParser::lookupFinished()
+ShortenedLinkParser::lookupFinished( const QUrl& url )
 {
     NetworkReply* r = qobject_cast< NetworkReply* >( sender() );
     Q_ASSERT( r );
 
-#ifndef ENABLE_HEADLESS
     if ( r->reply()->error() != QNetworkReply::NoError )
         JobStatusView::instance()->model()->addJob( new ErrorStatusMessage( tr( "Network error parsing shortened link!" ) ) );
-#endif
 
     tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Got an un-shortened url:" << r->reply()->url().toString();
-    m_links << r->reply()->url().toString();
+    m_links << url.toString();
     m_queries.remove( r );
     r->deleteLater();
 
@@ -122,12 +123,8 @@ ShortenedLinkParser::checkFinished()
 }
 
 
-#ifndef ENABLE_HEADLESS
-
 QPixmap
 ShortenedLinkParser::pixmap()
 {
     return TomahawkUtils::defaultPixmap( TomahawkUtils::Add );
 }
-
-#endif

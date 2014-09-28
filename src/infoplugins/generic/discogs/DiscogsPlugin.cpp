@@ -19,11 +19,10 @@
 #include "DiscogsPlugin.h"
 
 
-#include "utils/TomahawkUtils.h"
+#include "utils/Json.h"
 #include "utils/Logger.h"
 #include "utils/Closure.h"
-
-#include <qjson/parser.h>
+#include "utils/NetworkAccessManager.h"
 
 #include <QNetworkReply>
 #include <QDomDocument>
@@ -97,7 +96,7 @@ DiscogsPlugin::notInCacheSlot( InfoStringHash criteria, InfoRequestData requestD
 
             QNetworkRequest req( url );
             req.setRawHeader( "User-Agent", "TomahawkPlayer/1.0 +http://tomahawk-player.org" );
-            QNetworkReply* reply = TomahawkUtils::nam()->get( req );
+            QNetworkReply* reply = Tomahawk::Utils::nam()->get( req );
 
             NewClosure( reply, SIGNAL( finished() ),  this, SLOT( albumSearchSlot( Tomahawk::InfoSystem::InfoRequestData, QNetworkReply* ) ), requestData, reply );
             break;
@@ -115,8 +114,7 @@ DiscogsPlugin::notInCacheSlot( InfoStringHash criteria, InfoRequestData requestD
 void
 DiscogsPlugin::albumSearchSlot( const InfoRequestData &requestData, QNetworkReply *reply )
 {
-    QJson::Parser p;
-    QVariantMap results = p.parse( reply ).toMap();
+    QVariantMap results = TomahawkUtils::parseJson( reply->readAll() ).toMap();
 
     if ( !results.contains( "results" ) || results.value( "results" ).toList().isEmpty() )
     {
@@ -136,7 +134,7 @@ DiscogsPlugin::albumSearchSlot( const InfoRequestData &requestData, QNetworkRepl
     QNetworkRequest req( url );
     req.setRawHeader( "User-Agent", "TomahawkPlayer/1.0 +http://tomahawk-player.org" );
 
-    QNetworkReply* reply2 = TomahawkUtils::nam()->get( req );
+    QNetworkReply* reply2 = Tomahawk::Utils::nam()->get( req );
     NewClosure( reply2, SIGNAL( finished() ),  this, SLOT( albumInfoSlot( Tomahawk::InfoSystem::InfoRequestData, QNetworkReply* ) ), requestData, reply2 );
 }
 
@@ -144,8 +142,7 @@ DiscogsPlugin::albumSearchSlot( const InfoRequestData &requestData, QNetworkRepl
 void
 DiscogsPlugin::albumInfoSlot( const InfoRequestData& requestData, QNetworkReply* reply )
 {
-    QJson::Parser p;
-    QVariantMap results = p.parse( reply ).toMap();
+    QVariantMap results = TomahawkUtils::parseJson( reply->readAll() ).toMap();
 
     if ( !results.contains( "resp" ) )
     {
@@ -171,7 +168,7 @@ DiscogsPlugin::albumInfoSlot( const InfoRequestData& requestData, QNetworkReply*
     foreach ( const QVariant& v, release[ "tracklist" ].toList() )
     {
         const QVariantMap track = v.toMap();
-        if ( track.contains( "title" ) )
+        if ( track.contains( "title" ) && !track[ "title" ].toString().isEmpty() )
             trackNameList << track[ "title" ].toString();
     }
 

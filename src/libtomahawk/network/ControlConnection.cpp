@@ -135,7 +135,7 @@ ControlConnection::setup()
         connect( d->source.data(), SIGNAL( syncedWithDatabase() ),
                                     SLOT( registerSource() ), Qt::QueuedConnection );
 
-        d->source->setOnline();
+        d->source->setOnline( true );
 
         d->pingtimer = new QTimer;
         d->pingtimer->setInterval( 5000 );
@@ -146,6 +146,7 @@ ControlConnection::setup()
     }
     else
     {
+        tLog() << Q_FUNC_INFO << "We are a duplicate secondary connection, so dropping.";
         // We are not responsible for this source anymore, so do not keep a reference.
         d->source = Tomahawk::source_ptr();
         // Unlock before we delete ourselves
@@ -172,7 +173,7 @@ ControlConnection::registerSource()
     // Only continue if we are still the ControlConnection associated with this source.
     if ( d->source->controlConnection() == this )
     {
-        qDebug() << Q_FUNC_INFO << d->source->id();
+        tLog( LOGVERBOSE ) << Q_FUNC_INFO << d->source->id();
         Source* source = (Source*) sender();
         Q_UNUSED( source )
         Q_ASSERT( source == d->source.data() );

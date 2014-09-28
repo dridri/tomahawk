@@ -1,6 +1,7 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
  *   Copyright 2013, Teo Mrnjavac <teo@kde.org>
+ *   Copyright 2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -45,8 +46,7 @@ InboxModel::InboxModel( QObject* parent )
     // Every time a ShareTrack dbcmd is created, we keep track of it until it's committed,
     // so we can react with post-commit changes in the UI
     Tomahawk::DatabaseCommandFactory* factory = Tomahawk::Database::instance()->commandFactory<Tomahawk::DatabaseCommand_ShareTrack>();
-    connect( factory, SIGNAL(created(Tomahawk::dbcmd_ptr)),
-             this, SLOT(onDbcmdCreated(Tomahawk::dbcmd_ptr)));
+    connect( factory, SIGNAL( created( Tomahawk::dbcmd_ptr ) ), SLOT( onDbcmdCreated( Tomahawk::dbcmd_ptr ) ) );
 }
 
 
@@ -55,32 +55,40 @@ InboxModel::~InboxModel()
 
 
 int
-InboxModel::unlistenedCount() const
+InboxModel::unlistenedCount( const QModelIndex& parent ) const
 {
     int count = 0;
-    foreach ( const Tomahawk::plentry_ptr& plentry, playlistEntries() )
+    for ( int i = 0; i < rowCount( parent ); i++ )
     {
-        bool isUnlistened = true;
-        foreach ( Tomahawk::SocialAction sa, plentry->query()->queryTrack()->allSocialActions() )
+        const QModelIndex idx = index( i, 0, parent );
+
+        PlayableItem* item = itemFromIndex( idx );
+        if ( item && item->source() )
         {
-            if ( sa.action == "Inbox" && sa.value.toBool() == false )
-            {
-                isUnlistened = false;
-                break;
-            }
+            count += unlistenedCount( idx );
         }
-        if ( isUnlistened )
-            count++;
+        else if ( item && item->query() )
+        {
+            bool isUnlistened = true;
+            foreach ( Tomahawk::SocialAction sa, item->query()->queryTrack()->allSocialActions() )
+            {
+                if ( sa.action == "Inbox" && sa.value.toBool() == false )
+                {
+                    isUnlistened = false;
+                    break;
+                }
+            }
+            if ( isUnlistened )
+                count++;
+        }
     }
     return count;
 }
 
 
 void
-InboxModel::insertEntries( const QList< Tomahawk::plentry_ptr >& entries, int row, const QList< Tomahawk::PlaybackLog >& logs )
+InboxModel::insertEntries( const QList< Tomahawk::plentry_ptr >& entries, int /* row */, const QModelIndex& /* parent */, const QList< Tomahawk::PlaybackLog >& /* logs */ )
 {
-    Q_UNUSED( logs ); // <- this is merely to silence GCC
-
     QList< Tomahawk::plentry_ptr > toInsert;
     for ( QList< Tomahawk::plentry_ptr >::const_iterator it = entries.constBegin();
           it != entries.constEnd(); ++it )
@@ -114,9 +122,36 @@ InboxModel::insertEntries( const QList< Tomahawk::plentry_ptr >& entries, int ro
                 ++i;
         }
     }
-    changed();
 
-    PlaylistModel::insertEntries( toInsert, row );
+    foreach ( const Tomahawk::plentry_ptr& entry, toInsert )
+    {
+        foreach ( const Tomahawk::SocialAction& sa, entry->query()->queryTrack()->socialActions( "Inbox", QVariant() /*neither true nor false!*/, true ) )
+        {
+            QModelIndex parent = indexFromSource( sa.source );
+            if ( !parent.isValid() )
+            {
+                QPair< int, int > crows;
+                int c = rowCount( QModelIndex() );
+                crows.first = c;
+                crows.second = c;
+
+                emit beginInsertRows( QModelIndex(), crows.first, crows.second );
+
+                PlayableItem* item = new PlayableItem( sa.source, rootItem() );
+                item->index = createIndex( rootItem()->children.count() - 1, 0, item );
+                connect( item, SIGNAL( dataChanged() ), SLOT( onDataChanged() ) );
+
+                emit endInsertRows();
+                parent = item->index;
+            }
+
+            QList< Tomahawk::plentry_ptr > el;
+            el << entry;
+            PlaylistModel::insertEntries( el, rowCount( parent ), parent );
+        }
+    }
+
+    changed();
 }
 
 
@@ -124,7 +159,7 @@ void
 InboxModel::removeIndex( const QModelIndex& index, bool moreToCome )
 {
     PlayableItem* item = itemFromIndex( index );
-    if ( item && !item->query().isNull() )
+    if ( item && item->query() )
     {
         Tomahawk::DatabaseCommand_DeleteInboxEntry* cmd = new Tomahawk::DatabaseCommand_DeleteInboxEntry( item->query() );
         Tomahawk::Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
@@ -201,7 +236,7 @@ InboxModel::loadTracks()
     startLoading();
 
     Tomahawk::DatabaseCommand_LoadInboxEntries* cmd = new Tomahawk::DatabaseCommand_LoadInboxEntries();
-    connect( cmd, SIGNAL( tracks( QList<Tomahawk::query_ptr> ) ), this, SLOT( tracksLoaded( QList<Tomahawk::query_ptr> ) ) );
+    connect( cmd, SIGNAL( tracks( QList<Tomahawk::query_ptr> ) ), SLOT( tracksLoaded( QList<Tomahawk::query_ptr> ) ) );
     Tomahawk::Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
 }
 
@@ -246,8 +281,7 @@ InboxModel::tracksLoaded( QList< Tomahawk::query_ptr > incoming )
 void
 InboxModel::onDbcmdCreated( const Tomahawk::dbcmd_ptr& cmd )
 {
-    connect( cmd.data(), SIGNAL( committed( Tomahawk::dbcmd_ptr ) ),
-             this, SLOT( onDbcmdCommitted( Tomahawk::dbcmd_ptr ) ) );
+    connect( cmd.data(), SIGNAL( committed( Tomahawk::dbcmd_ptr ) ), SLOT( onDbcmdCommitted( Tomahawk::dbcmd_ptr ) ) );
 }
 
 

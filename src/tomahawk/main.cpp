@@ -19,32 +19,35 @@
 
 #include "TomahawkApp.h"
 
-#include "thirdparty/kdsingleapplicationguard/kdsingleapplicationguard.h"
+#include "kdsingleapplicationguard.h"
 #include "UbuntuUnityHack.h"
 #include "TomahawkSettings.h"
 #include "utils/TomahawkUtils.h"
 #include "config.h"
 #include "utils/Logger.h"
 
-#ifdef Q_WS_MAC
+#include "qca.h"
+
+#ifdef Q_OS_MAC
     #include "TomahawkApp_Mac.h"
     #include </System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/AE.framework/Versions/A/Headers/AppleEvents.h>
     static pascal OSErr appleEventHandler( const AppleEvent*, AppleEvent*, long );
 #endif
 
-#ifndef ENABLE_HEADLESS
-    #include "TomahawkSettingsGui.h"
-    #ifdef WITH_BREAKPAD
-        #include "breakpad/BreakPad.h"
-    #endif
-
-    #ifdef Q_WS_X11 // This is probably a very bad idea with Qt5 anyway... because (if at all) X lives in a QPA plugin
-        #include <X11/Xlib.h>
-    #endif
+#include "TomahawkSettings.h"
+#ifdef WITH_CRASHREPORTER
+    #include "libcrashreporter-handler/Handler.h"
 #endif
 
+#if QT_VERSION < QT_VERSION_CHECK( 4, 8, 0 )
+    #include <X11/Xlib.h>
+#endif
+
+#include <exception>
 
 #ifdef Q_OS_WIN
+#include <windows.h>
+
 // code from patch attached to QTBUG-19064 by Honglei Zhang
 LRESULT QT_WIN_CALLBACK qt_LowLevelKeyboardHookProc( int nCode, WPARAM wParam, LPARAM lParam );
 HHOOK hKeyboardHook;
@@ -74,7 +77,7 @@ LRESULT QT_WIN_CALLBACK qt_LowLevelKeyboardHookProc( int nCode, WPARAM wParam, L
                     if ( QApplication::activeWindow() == widget )
                         continue;
 
-                    hWnd = widget->winId();
+                    hWnd = (HWND)widget->winId();
 
                     // generate message and post it to the message queue
                     LPKBDLLHOOKSTRUCT pKeyboardHookStruct = reinterpret_cast<LPKBDLLHOOKSTRUCT>(lParam);
@@ -91,6 +94,7 @@ LRESULT QT_WIN_CALLBACK qt_LowLevelKeyboardHookProc( int nCode, WPARAM wParam, L
 
     return CallNextHookEx( 0, nCode, wParam, lParam );
 }
+
 
 #include <io.h>
 #define argc __argc
@@ -124,10 +128,14 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine
     }
 #else // Q_OS_WIN
 
+
 int
 main( int argc, char *argv[] )
 {
-#ifdef Q_WS_MAC
+    QCA::Initializer init;
+    Q_UNUSED( init )
+
+#ifdef Q_OS_MAC
     // Do Mac specific startup to get media keys working.
     // This must go before QApplication initialisation.
     Tomahawk::macMain();
@@ -139,42 +147,70 @@ main( int argc, char *argv[] )
     // used for url handler
     AEEventHandlerUPP h = AEEventHandlerUPP( appleEventHandler );
     AEInstallEventHandler( 'GURL', 'GURL', h, 0, false );
-    #endif // Q_WS_MAC
+    #endif // Q_OS_MAC
 #endif //Q_OS_WIN
 
-    #ifdef Q_WS_X11
+    #if QT_VERSION < QT_VERSION_CHECK( 4, 8, 0 )
         XInitThreads();
+    #else
+        QCoreApplication::setAttribute( Qt::AA_X11InitThreads );
     #endif
 
     TomahawkApp a( argc, argv );
 
+    #ifdef WITH_CRASHREPORTER
+    CrashReporter::Handler* handler = new CrashReporter::Handler( QDir::tempPath(), !TomahawkUtils::headless(), "tomahawk_crash_reporter" );
+    #endif
+
     // MUST register StateHash ****before*** initing TomahawkSettingsGui as constructor of settings does upgrade before Gui subclass registers type
     TomahawkSettings::registerCustomSettingsHandlers();
-    TomahawkSettingsGui::registerCustomSettingsHandlers();
-
-#ifdef ENABLE_HEADLESS
     new TomahawkSettings( &a );
-#else
-    new TomahawkSettingsGui( &a );
-#endif
 
-#ifndef ENABLE_HEADLESS
-#ifdef WITH_BREAKPAD
-    new BreakPad( QDir::tempPath(), TomahawkSettings::instance()->crashReporterEnabled() && !TomahawkUtils::headless() );
-#endif
-#endif
+    #ifdef WITH_CRASHREPORTER
+    if( !TomahawkUtils::headless() )
+    {
+        handler->setActive( TomahawkSettings::instance()->crashReporterEnabled() );
+    }
+    #endif
+
 
     KDSingleApplicationGuard guard( KDSingleApplicationGuard::AutoKillOtherInstances );
     QObject::connect( &guard, SIGNAL( instanceStarted( KDSingleApplicationGuard::Instance ) ), &a, SLOT( instanceStarted( KDSingleApplicationGuard::Instance ) ) );
 
     int returnCode = 0;
-    if ( guard.isPrimaryInstance() )
+
+    // catch unhandled exceptions to log them
+    // setupLogfile must be called from TomahawkApp.init to have the logging working
+    // unfortunately MinGW does not catch std::exceptions as system exceptions
+    // so we need to crash to make the crashreporter come up
+    try
     {
-        a.init();
-        returnCode = a.exec();
+        if ( guard.isPrimaryInstance() )
+        {
+            a.init();
+            returnCode = a.exec();
+        }
+        else
+            qDebug() << "Tomahawk is already running, shutting down.";
     }
-    else
-        qDebug() << "Tomahawk is already running, shutting down.";
+    catch( std::exception& exception )
+    {
+        tLog() << "Uncaught exception: what(): " << exception.what();
+        #ifdef __MINGW32__
+        TomahawkUtils::crash();
+        #else
+        throw;
+        #endif
+    }
+    catch ( ... )
+    {
+        tLog() << "Uncaught non std::exception";
+        #ifdef __MINGW32__
+        TomahawkUtils::crash();
+        #else
+        throw;
+        #endif
+    }
 
 #ifdef Q_OS_WIN
     // clean up keyboard hook
@@ -189,7 +225,7 @@ main( int argc, char *argv[] )
 }
 
 
-#ifdef Q_WS_MAC
+#ifdef Q_OS_MAC
 static pascal OSErr
 appleEventHandler( const AppleEvent* e, AppleEvent*, long )
 {

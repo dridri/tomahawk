@@ -29,11 +29,9 @@
 #include <network/Servent.h>
 #include <sip/SipInfo.h>
 #include <sip/PeerInfo.h>
+#include <utils/Json.h>
 #include <utils/Logger.h>
 #include <SourceList.h>
-
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
 
 #include <QFile>
 #include <QHostInfo>
@@ -48,12 +46,13 @@ HatchetSipPlugin::HatchetSipPlugin( Tomahawk::Accounts::Account *account )
 {
     tLog() << Q_FUNC_INFO;
 
-    connect( m_account, SIGNAL( accessTokensFetched() ), this, SLOT( connectWebSocket() ) );
+    connect( m_account, SIGNAL( accessTokenFetched() ), this, SLOT( connectWebSocket() ) );
     connect( Servent::instance(), SIGNAL( dbSyncTriggered() ), this, SLOT( dbSyncTriggered() ));
 
+    /*
     QFile pemFile( ":/hatchet-account/dreamcatcher.pem" );
     pemFile.open( QIODevice::ReadOnly );
-    tDebug() << Q_FUNC_INFO << "certs/dreamcatcher.pem: " << pemFile.readAll();
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "certs/dreamcatcher.pem: " << pemFile.readAll();
     pemFile.close();
     pemFile.open( QIODevice::ReadOnly );
     QCA::ConvertResult conversionResult;
@@ -64,6 +63,7 @@ HatchetSipPlugin::HatchetSipPlugin( Tomahawk::Accounts::Account *account )
         return;
     }
     m_publicKey = new QCA::PublicKey( publicKey );
+    */
 
     m_reconnectTimer.setInterval( 0 );
     m_reconnectTimer.setSingleShot( true );
@@ -90,7 +90,8 @@ HatchetSipPlugin::~HatchetSipPlugin()
 bool
 HatchetSipPlugin::isValid() const
 {
-    return m_account->enabled() && m_account->isAuthenticated() && m_publicKey;
+    //return m_account->enabled() && m_account->isAuthenticated() && m_publicKey;
+    return m_account->enabled() && m_account->isAuthenticated();
 }
 
 
@@ -113,7 +114,7 @@ HatchetSipPlugin::connectPlugin()
     }
 
     hatchetAccount()->setConnectionState( Tomahawk::Accounts::Account::Connecting );
-    hatchetAccount()->fetchAccessTokens();
+    hatchetAccount()->fetchAccessToken( "dreamcatcher" );
 }
 
 
@@ -156,42 +157,18 @@ HatchetSipPlugin::connectWebSocket()
       return;
     }
 
-    m_token.clear();
+    m_token = m_account->credentials()[ "dreamcatcher_access_token" ].toString();
 
-    QVariantList tokensCreds = m_account->credentials()[ "dreamcatchertokens" ].toList();
 
-    //FIXME: Don't blindly pick the first one that matches? Most likely, cycle through if the first one fails
-    QVariantMap connectVals;
-    foreach ( QVariant credObj, tokensCreds )
+    if ( m_token.isEmpty() )
     {
-        QVariantMap creds = credObj.toMap();
-        if ( creds.contains( "type" ) && creds[ "type" ].toString() == "dreamcatcher" )
-        {
-            connectVals = creds;
-            m_token = creds[ "token" ].toString();
-            break;
-        }
-    }
-
-    QString url;
-    if ( !connectVals.isEmpty() )
-    {
-        QString port = connectVals[ "port" ].toString();
-        if ( port == "443" )
-            url = "wss://";
-        else
-            url = "ws://";
-        url += connectVals[ "host" ].toString() + ':' + connectVals[ "port" ].toString();
-    }
-
-    if ( url.isEmpty() || m_token.isEmpty() )
-    {
-        tLog() << Q_FUNC_INFO << "Unable to find a proper connection endpoint; bailing";
+        tLog() << Q_FUNC_INFO << "Unable to find an access token"; 
         disconnectPlugin();
         return;
     }
-    else
-        tLog() << Q_FUNC_INFO << "Connecting to Dreamcatcher endpoint at: " << url;
+
+    QString url( "wss://dreamcatcher.hatchet.is:443" );
+    tLog() << Q_FUNC_INFO << "Connecting to Dreamcatcher endpoint at: " << url;
 
     m_webSocketThreadController->setUrl( url );
     m_webSocketThreadController->start();
@@ -213,15 +190,17 @@ HatchetSipPlugin::webSocketConnected()
     hatchetAccount()->setConnectionState( Tomahawk::Accounts::Account::Connected );
     m_sipState = AcquiringVersion;
 
+    /*
     m_uuid = QUuid::createUuid().toString();
     QCA::SecureArray sa( m_uuid.toLatin1() );
     QCA::SecureArray result = m_publicKey->encrypt( sa, QCA::EME_PKCS1_OAEP );
 
-    tDebug() << Q_FUNC_INFO << "uuid:" << m_uuid << ", size of uuid:" << m_uuid.size() << ", size of sa:" << sa.size() << ", size of result:" << result.size();
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "uuid:" << m_uuid << ", size of uuid:" << m_uuid.size() << ", size of sa:" << sa.size() << ", size of result:" << result.size();
+    */
 
     QVariantMap nonceVerMap;
     nonceVerMap[ "version" ] = VERSION;
-    nonceVerMap[ "nonce" ] = QString( result.toByteArray().toBase64() );
+    //nonceVerMap[ "nonce" ] = QString( result.toByteArray().toBase64() );
     sendBytes( nonceVerMap );
 }
 
@@ -251,7 +230,7 @@ HatchetSipPlugin::webSocketDisconnected()
         // Work on the assumption that we were disconnected because Dreamcatcher shut down
         // Reconnect after a time; use reasonable backoff + random
         int interval = m_reconnectTimer.interval() <= 25000 ? m_reconnectTimer.interval() + 5000 : 30000;
-        interval += QCA::Random::randomInt() % 30;
+        interval += qrand() % 30;
         m_reconnectTimer.setInterval( interval );
         m_reconnectTimer.start();
     }
@@ -261,22 +240,20 @@ HatchetSipPlugin::webSocketDisconnected()
 bool
 HatchetSipPlugin::sendBytes( const QVariantMap& jsonMap ) const
 {
-    tLog() << Q_FUNC_INFO;
     if ( m_sipState == Closed )
     {
         tLog() << Q_FUNC_INFO << "was told to send bytes on a closed connection, not gonna do it";
         return false;
     }
 
-    QJson::Serializer serializer;
-    QByteArray bytes = serializer.serialize( jsonMap );
+    QByteArray bytes = TomahawkUtils::toJson( jsonMap );
     if ( bytes.isEmpty() )
     {
         tLog() << Q_FUNC_INFO << "could not serialize register structure to JSON";
         return false;
     }
 
-    tDebug() << Q_FUNC_INFO << "Sending bytes of size" << bytes.size();
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Sending bytes of size" << bytes.size();
     emit rawBytes( bytes );
     return true;
 }
@@ -285,11 +262,10 @@ HatchetSipPlugin::sendBytes( const QVariantMap& jsonMap ) const
 void
 HatchetSipPlugin::messageReceived( const QByteArray &msg )
 {
-    tDebug() << Q_FUNC_INFO << "WebSocket message: " << msg;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "WebSocket message: " << msg;
 
-    QJson::Parser parser;
     bool ok;
-    QVariant jsonVariant = parser.parse( msg, &ok );
+    QVariant jsonVariant = TomahawkUtils::parseJson( msg, &ok );
     if ( !jsonVariant.isValid() )
     {
         tLog() << Q_FUNC_INFO << "Failed to parse message back from server";
@@ -300,10 +276,10 @@ HatchetSipPlugin::messageReceived( const QByteArray &msg )
 
     if ( m_sipState == AcquiringVersion )
     {
-        tLog() << Q_FUNC_INFO << "In acquiring version state, expecting version/nonce information";
-        if ( !retMap.contains( "version" ) || !retMap.contains( "nonce" ) )
+        tLog() << Q_FUNC_INFO << "In acquiring version state, expecting versioninformation";
+        if ( !retMap.contains( "version" ) )
         {
-            tLog() << Q_FUNC_INFO << "Failed to acquire version or nonce information";
+            tLog() << Q_FUNC_INFO << "Failed to acquire version information";
             disconnectPlugin();
             return;
         }
@@ -316,12 +292,14 @@ HatchetSipPlugin::messageReceived( const QByteArray &msg )
             return;
         }
 
+        /*
         if ( retMap[ "nonce" ].toString() != m_uuid )
         {
             tLog() << Q_FUNC_INFO << "Failed to validate nonce";
             disconnectPlugin();
             return;
         }
+        */
 
         m_version = ver;
 
@@ -553,7 +531,6 @@ HatchetSipPlugin::sendOplog( const QVariantMap& valMap ) const
 void
 HatchetSipPlugin::oplogFetched( const QString& sinceguid, const QString& /* lastguid */, const QList< dbop_ptr > ops )
 {
-    tDebug() << Q_FUNC_INFO;
     const uint_fast32_t byteMax = 1 << 25;
     int currBytes = 0;
     QVariantMap commandMap;

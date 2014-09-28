@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -34,7 +34,6 @@
 #include "TomahawkSettings.h"
 
 #include <QCoreApplication>
-
 
 using namespace Tomahawk;
 
@@ -104,13 +103,13 @@ DirLister::scanDir( QDir dir, int depth )
 DirListerThreadController::DirListerThreadController( QObject *parent )
     : QThread( parent )
 {
-    tDebug() << Q_FUNC_INFO;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO;
 }
 
 
 DirListerThreadController::~DirListerThreadController()
 {
-    tDebug() << Q_FUNC_INFO;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO;
 }
 
 
@@ -137,27 +136,20 @@ MusicScanner::MusicScanner( MusicScanner::ScanMode scanMode, const QStringList& 
     : QObject()
     , m_scanMode( scanMode )
     , m_paths( paths )
+    , m_scanned( 0 )
+    , m_showProgress( true )
+    , m_dryRun( false )
+    , m_verbose( false )
+    , m_cmdQueue( 0 )
     , m_batchsize( bs )
     , m_dirListerThreadController( 0 )
 {
-    m_ext2mime.insert( "mp3",  TomahawkUtils::extensionToMimetype( "mp3" ) );
-    m_ext2mime.insert( "ogg",  TomahawkUtils::extensionToMimetype( "ogg" ) );
-    m_ext2mime.insert( "oga",  TomahawkUtils::extensionToMimetype( "oga" ) );
-    m_ext2mime.insert( "mpc",  TomahawkUtils::extensionToMimetype( "mpc" ) );
-    m_ext2mime.insert( "wma",  TomahawkUtils::extensionToMimetype( "wma" ) );
-    m_ext2mime.insert( "aac",  TomahawkUtils::extensionToMimetype( "aac" ) );
-    m_ext2mime.insert( "m4a",  TomahawkUtils::extensionToMimetype( "m4a" ) );
-    m_ext2mime.insert( "mp4",  TomahawkUtils::extensionToMimetype( "mp4" ) );
-    m_ext2mime.insert( "flac", TomahawkUtils::extensionToMimetype( "flac" ) );
-    m_ext2mime.insert( "aiff", TomahawkUtils::extensionToMimetype( "aiff" ) );
-    m_ext2mime.insert( "aif",  TomahawkUtils::extensionToMimetype( "aif" ) );
-    m_ext2mime.insert( "wv",   TomahawkUtils::extensionToMimetype( "wv" ) );
 }
 
 
 MusicScanner::~MusicScanner()
 {
-    tDebug() << Q_FUNC_INFO;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO;
 
     if ( m_dirListerThreadController )
     {
@@ -171,13 +163,58 @@ MusicScanner::~MusicScanner()
 
 
 void
+MusicScanner::showProgress( bool _showProgress )
+{
+    m_showProgress = _showProgress;
+}
+
+
+bool
+MusicScanner::showingProgress()
+{
+    return m_showProgress;
+}
+
+
+void
+MusicScanner::setDryRun( bool _dryRun )
+{
+    m_dryRun = _dryRun;
+}
+
+
+bool
+MusicScanner::dryRun()
+{
+    return m_dryRun;
+}
+
+
+void
+MusicScanner::setVerbose( bool _verbose )
+{
+    m_verbose = _verbose;
+}
+
+
+bool
+MusicScanner::verbose()
+{
+    return m_verbose;
+}
+
+
+void
 MusicScanner::startScan()
 {
     tDebug( LOGVERBOSE ) << "Loading mtimes...";
     m_scanned = m_skipped = m_cmdQueue = 0;
     m_skippedFiles.clear();
 
-    SourceList::instance()->getLocal()->scanningProgress( m_scanned );
+    if ( m_showProgress )
+    {
+        SourceList::instance()->getLocal()->scanningProgress( m_scanned );
+    }
 
     // trigger the scan once we've loaded old filemtimes
     //FIXME: For multiple collection support make sure the right prefix gets passed in...or not...
@@ -204,7 +241,7 @@ MusicScanner::setFileMtimes( const QMap< QString, QMap< unsigned int, unsigned i
 void
 MusicScanner::scan()
 {
-    tDebug( LOGEXTRA ) << "Num saved file mtimes from last scan:" << m_filemtimes.size();
+    tDebug( LOGVERBOSE ) << "Num saved file mtimes from last scan:" << m_filemtimes.size();
 
     connect( this, SIGNAL( batchReady( QVariantList, QVariantList ) ),
                      SLOT( commitBatch( QVariantList, QVariantList ) ), Qt::DirectConnection );
@@ -258,8 +295,11 @@ MusicScanner::postOps()
 
     if ( m_filesToDelete.length() || m_scannedfiles.length() )
     {
-        SourceList::instance()->getLocal()->updateIndexWhenSynced();
-        commitBatch( m_scannedfiles, m_filesToDelete );
+        if ( !m_dryRun )
+        {
+            SourceList::instance()->getLocal()->updateIndexWhenSynced();
+            commitBatch( m_scannedfiles, m_filesToDelete );
+        }
         m_scannedfiles.clear();
         m_filesToDelete.clear();
     }
@@ -356,20 +396,13 @@ MusicScanner::scanFile( const QFileInfo& fi )
 
 
 QVariant
-MusicScanner::readFile( const QFileInfo& fi )
+MusicScanner::readTags( const QFileInfo& fi )
 {
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Parsing tags for file:" << fi.absoluteFilePath();
+
     const QString suffix = fi.suffix().toLower();
-
-    if ( !m_ext2mime.contains( suffix ) )
-    {
+    if ( !TomahawkUtils::supportedExtensions().contains( suffix ) )
         return QVariantMap(); // invalid extension
-    }
-
-    if ( m_scanned )
-        if ( m_scanned % 3 == 0 )
-            SourceList::instance()->getLocal()->scanningProgress( m_scanned );
-    if ( m_scanned % 100 == 0 )
-        tDebug( LOGINFO ) << "Scan progress:" << m_scanned << fi.canonicalFilePath();
 
     #ifdef COMPLEX_TAGLIB_FILENAME
         const wchar_t *encodedName = reinterpret_cast< const wchar_t * >( fi.canonicalFilePath().utf16() );
@@ -380,16 +413,11 @@ MusicScanner::readFile( const QFileInfo& fi )
 
     TagLib::FileRef f( encodedName );
     if ( f.isNull() || !f.tag() )
-    {
-        m_skippedFiles << fi.canonicalFilePath();
-        m_skipped++;
         return QVariantMap();
-    }
 
     int bitrate = 0;
     int duration = 0;
-
-    Tag *tag = Tag::fromFile( f );
+    QSharedPointer<Tag> tag( Tag::fromFile( f ) );
     if ( f.audioProperties() )
     {
         TagLib::AudioProperties *properties = f.audioProperties();
@@ -405,14 +433,9 @@ MusicScanner::readFile( const QFileInfo& fi )
         track  = tag->title().trimmed();
     }
     if ( !tag || artist.isEmpty() || track.isEmpty() )
-    {
-        // FIXME: do some clever filename guessing
-        m_skippedFiles << fi.canonicalFilePath();
-        m_skipped++;
         return QVariantMap();
-    }
 
-    QString mimetype = m_ext2mime.value( suffix );
+    QString mimetype = TomahawkUtils::extensionToMimetype( suffix );
     QString url( "file://%1" );
 
     QVariantMap m;
@@ -432,7 +455,31 @@ MusicScanner::readFile( const QFileInfo& fi )
     m["discnumber"]   = tag->discNumber();
     m["hash"]         = ""; // TODO
 
-    m_scanned++;
+    return m;
+}
+
+
+QVariant
+MusicScanner::readFile( const QFileInfo& fi )
+{
+    const QVariant m = readTags( fi );
+
+    if ( m_scanned )
+        if ( m_scanned % 3 == 0 && m_showProgress )
+            SourceList::instance()->getLocal()->scanningProgress( m_scanned );
+    if ( m_scanned % 100 == 0 || m_verbose )
+      tDebug( LOGINFO ) << "Scanning file:" << m_scanned << fi.canonicalFilePath();
+
+    if ( m.toMap().isEmpty() )
+    {
+        m_skippedFiles << fi.canonicalFilePath();
+        m_skipped++;
+    }
+    else
+    {
+        m_scanned++;
+    }
+
     return m;
 }
 

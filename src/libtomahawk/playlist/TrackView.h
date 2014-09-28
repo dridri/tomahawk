@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -78,13 +78,11 @@ public:
     QModelIndex contextMenuIndex() const { return m_contextMenuIndex; }
     void setContextMenuIndex( const QModelIndex& idx ) { m_contextMenuIndex = idx; }
 
-    bool updatesContextView() const { return m_updateContextView; }
-    void setUpdatesContextView( bool b ) { m_updateContextView = b; }
-
     bool autoResize() const { return m_autoResize; }
     void setAutoResize( bool b );
 
     void setAlternatingRowColors( bool enable );
+    void setAutoExpanding( bool enable );
 
     // Starts playing from the beginning if resolved, or waits until a track is playable
     void startPlayingFromStart();
@@ -97,15 +95,18 @@ public slots:
     void playItem();
     virtual void onMenuTriggered( int action );
 
-    void onViewChanged();
-    void onScrollTimeout();
+    void expand( const QPersistentModelIndex& idx );
+    void select( const QPersistentModelIndex& idx );
+    void selectFirstTrack();
 
 signals:
     void itemActivated( const QModelIndex& index );
+    void querySelected( const Tomahawk::query_ptr& query );
     void modelChanged();
 
 protected:
     virtual void resizeEvent( QResizeEvent* event );
+    virtual bool eventFilter( QObject* obj, QEvent* event );
 
     virtual void startDrag( Qt::DropActions supportedActions );
     virtual void dragEnterEvent( QDragEnterEvent* event );
@@ -121,11 +122,15 @@ protected:
 protected slots:
     virtual void currentChanged( const QModelIndex& current, const QModelIndex& previous );
 
+    void onViewChanged();
+    void onScrollTimeout();
+
 private slots:
     void onItemResized( const QModelIndex& index );
     void onFilterChanged( const QString& filter );
     void onModelFilling();
     void onModelEmptyCheck();
+    void onCurrentIndexChanged( const QModelIndex& newIndex, const QModelIndex& oldIndex );
 
     void onCustomContextMenu( const QPoint& pos );
 
@@ -151,9 +156,9 @@ private:
     bool m_dragging;
     QRect m_dropRect;
 
-    bool m_updateContextView;
     bool m_autoResize;
     bool m_alternatingRowColors;
+    bool m_autoExpanding;
 
     QModelIndex m_contextMenuIndex;
 

@@ -18,6 +18,7 @@
 
 #include "DatabaseCommand_SocialAction.h"
 
+#include "collection/Collection.h"
 #include "database/Database.h"
 #include "network/Servent.h"
 #include "utils/Logger.h"
@@ -38,6 +39,10 @@ DatabaseCommand_SocialAction::postCommitHook()
     {
         Servent::instance()->triggerDBSync();
     }
+
+    trackdata_ptr trackData = TrackData::get( 0, m_artist, m_title );
+    if ( trackData )
+        trackData->loadSocialActions( true );
 
     source()->reportSocialAttributesChanged( this );
 }

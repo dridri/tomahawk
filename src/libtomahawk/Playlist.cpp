@@ -20,6 +20,7 @@
 
 #include "Playlist_p.h"
 
+#include "collection/Collection.h"
 #include "database/Database.h"
 #include "database/DatabaseCommand_LoadPlaylistEntries.h"
 #include "database/DatabaseCommand_SetPlaylistRevision.h"
@@ -35,13 +36,13 @@
 #include "PlaylistPlaylistInterface.h"
 #include "Source.h"
 #include "SourceList.h"
-#include "TomahawkSettings.h"
 
 #include <QDomDocument>
 #include <QDomElement>
 
 using namespace Tomahawk;
 
+static QSharedPointer<PlaylistRemovalHandler> s_removalHandler;
 
 Playlist::Playlist( const source_ptr& author )
     : d_ptr( new PlaylistPrivate( this, author ) )
@@ -79,6 +80,7 @@ Playlist::Playlist( const source_ptr& author,
     init();
 }
 
+
 Playlist::Playlist( const source_ptr& author,
                     const QString& guid,
                     const QString& title,
@@ -109,6 +111,17 @@ Playlist::init()
 Playlist::~Playlist()
 {
     delete d_ptr;
+}
+
+
+QSharedPointer<PlaylistRemovalHandler> Playlist::removalHandler()
+{
+    if ( s_removalHandler.isNull() )
+    {
+        s_removalHandler = QSharedPointer<PlaylistRemovalHandler>( new PlaylistRemovalHandler() );
+    }
+
+    return s_removalHandler;
 }
 
 
@@ -175,18 +188,6 @@ Playlist::get( const QString& guid )
     }
 
     return p;
-}
-
-
-void
-Playlist::remove( const playlist_ptr& playlist )
-{
-    emit playlist->aboutToBeDeleted( playlist );
-
-    TomahawkSettings::instance()->removePlaylistSettings( playlist->guid() );
-
-    DatabaseCommand_DeletePlaylist* cmd = new DatabaseCommand_DeletePlaylist( playlist->author(), playlist->guid() );
-    Database::instance()->enqueue( Tomahawk::dbcmd_ptr(cmd) );
 }
 
 
@@ -353,7 +354,17 @@ Playlist::createNewRevision( const QString& newrev, const QString& oldrev, const
                                                      added,
                                                      entries );
 
-    Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
+    connect( cmd, SIGNAL( finished() ),
+             this, SLOT( setPlaylistRevisionFinished() ) );
+    if ( d->queuedSetPlaylistRevision )
+    {
+        d->queuedSetPlaylistRevisionCmds.enqueue( cmd );
+    }
+    else
+    {
+        d->queuedSetPlaylistRevision = true;
+        Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
+    }
 }
 
 
@@ -388,7 +399,17 @@ Playlist::updateEntries( const QString& newrev, const QString& oldrev, const QLi
                                              orderedguids,
                                              entries );
 
-    Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
+    connect( cmd, SIGNAL( finished() ),
+             this, SLOT( setPlaylistRevisionFinished() ) );
+    if ( d->queuedSetPlaylistRevision )
+    {
+        d->queuedSetPlaylistRevisionCmds.enqueue( cmd );
+    }
+    else
+    {
+        d->queuedSetPlaylistRevision = true;
+        Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
+    }
 }
 
 
@@ -462,7 +483,6 @@ Playlist::setNewRevision( const QString& rev,
     QMap<QString, plentry_ptr> entriesmap;
     foreach ( const plentry_ptr& p, d->entries )
     {
-        tDebug() << p->guid() << p->query()->toString();
         entriesmap.insert( p->guid(), p );
     }
 
@@ -500,6 +520,17 @@ Playlist::setNewRevision( const QString& rev,
 
     return pr;
 }
+
+void
+Playlist::removeFromDatabase()
+{
+    Q_D( Playlist );
+
+    emit aboutToBeDeleted( d->weakSelf.toStrongRef() );
+    DatabaseCommand_DeletePlaylist* cmd = new DatabaseCommand_DeletePlaylist( d->source, d->guid );
+    Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
+}
+
 
 Playlist::Playlist( PlaylistPrivate *d )
     : d_ptr( d )
@@ -546,6 +577,24 @@ Playlist::onResolvingFinished()
     {
         d->locallyChanged = false;
         createNewRevision( currentrevision(), currentrevision(), d->entries );
+    }
+}
+
+
+void
+Playlist::setPlaylistRevisionFinished()
+{
+    Q_D( Playlist );
+    if ( d->queuedSetPlaylistRevisionCmds.length() > 0 )
+    {
+        DatabaseCommand_SetPlaylistRevision* cmd = d->queuedSetPlaylistRevisionCmds.dequeue();
+        // Update oldrev to currentRevision so that optimistic locking works correctly.
+        cmd->setOldrev( currentrevision() );
+        Database::instance()->enqueue( Tomahawk::dbcmd_ptr( cmd ) );
+    }
+    else
+    {
+        d->queuedSetPlaylistRevision = false;
     }
 }
 
@@ -894,4 +943,16 @@ Playlist::updaters() const
 {
     Q_D( const Playlist );
     return d->updaters;
+}
+
+
+void
+PlaylistRemovalHandler::remove( const playlist_ptr& playlist )
+{
+    playlist->removeFromDatabase();
+}
+
+
+PlaylistRemovalHandler::PlaylistRemovalHandler()
+{
 }

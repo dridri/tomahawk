@@ -21,6 +21,9 @@
 
 #include "accounts/AccountManager.h"
 #include "infosystem/InfoSystem.h"
+#include "jobview/JobStatusView.h"
+#include "jobview/JobStatusModel.h"
+#include "jobview/ErrorStatusMessage.h"
 #include "playlist/PlaylistUpdaterInterface.h"
 #include "resolvers/ScriptResolver.h"
 #include "utils/Closure.h"
@@ -31,17 +34,13 @@
 #include "Pipeline.h"
 #include "Playlist.h"
 #include "PlaylistEntry.h"
+#include "PlaylistInterface.h"
 #include "SourceList.h"
 #include "SpotifyAccountConfig.h"
 #include "SpotifyInfoPlugin.h"
 #include "SpotifyPlaylistUpdater.h"
 #include "TomahawkSettings.h"
-
-#ifndef ENABLE_HEADLESS
-#include "jobview/JobStatusView.h"
-#include "jobview/JobStatusModel.h"
-#include "jobview/ErrorStatusMessage.h"
-#endif
+#include "Track.h"
 
 #include <QAction>
 #include <QCoreApplication>
@@ -209,7 +208,7 @@ SpotifyAccount::hookupResolver()
         path = data.scriptPath;
     }
 
-    qDebug() << "Starting spotify resolver with path:" << path;
+    tLog( LOGVERBOSE ) << "Starting spotify resolver with path:" << path;
     if ( !m_spotifyResolver.isNull() )
     {
         delete m_spotifyResolver.data();
@@ -225,11 +224,11 @@ SpotifyAccount::hookupResolver()
     // Since the resolver in 0.4.x used an incompatible version of kdsingleappguard, we can't auto-kill old resolvers on the
     // 0.4.x->0.5.x upgrade. So we do it manually for a while
     killExistingResolvers();
-    m_spotifyResolver = QPointer< ScriptResolver >( qobject_cast< ScriptResolver* >( Pipeline::instance()->addScriptResolver( path ) ) );
+    m_spotifyResolver = QPointer< ScriptResolver >( qobject_cast< ScriptResolver* >( Pipeline::instance()->addScriptResolver( accountId(), path ) ) );
     m_spotifyResolver.data()->setIcon( TomahawkUtils::defaultPixmap( TomahawkUtils::SpotifyIcon ) );
 
     connect( m_spotifyResolver.data(), SIGNAL( changed() ), this, SLOT( resolverChanged() ) );
-    connect( m_spotifyResolver.data(), SIGNAL( customMessage( QString,QVariantMap ) ), this, SLOT( resolverMessage( QString, QVariantMap ) ) );
+    connect( m_spotifyResolver.data(), SIGNAL( customMessage( QString, QVariantMap ) ), this, SLOT( resolverMessage( QString, QVariantMap ) ) );
     connect( ActionCollection::instance(), SIGNAL( privacyModeChanged() ), SLOT( privateModeChanged() ) );
     // Always get logged in status
     QVariantMap msg;
@@ -244,10 +243,10 @@ SpotifyAccount::killExistingResolvers()
     QProcess p;
 #if defined(Q_OS_UNIX)
     const int ret = p.execute( "killall -9 spotify_tomahawkresolver" );
-    qDebug() << "Tried to killall -9 spotify_tomahawkresolver with return code:" << ret;
+    tLog( LOGVERBOSE ) << "Tried to killall -9 spotify_tomahawkresolver with return code:" << ret;
 #elif defined(Q_OS_WIN)
     const int ret = p.execute( "taskkill.exe /F /im spotify_tomahawkresolver.exe" );
-    qDebug() << "Tried to taskkill.exe /F /im spotify_tomahawkresolver.exe with return code:" << ret;
+    tLog( LOGVERBOSE ) << "Tried to taskkill.exe /F /im spotify_tomahawkresolver.exe with return code:" << ret;
 #endif
 }
 
@@ -294,7 +293,7 @@ SpotifyAccount::authenticate()
     const Attica::Content res = AtticaManager::instance()->resolverForId( s_resolverId );
     const AtticaManager::ResolverState state = AtticaManager::instance()->resolverState( res );
 
-    qDebug() << "Spotify account authenticating...";
+    tLog( LOGVERBOSE ) << "Spotify account authenticating...";
 
     const QString path = configuration().value( "path" ).toString();
     const QFileInfo info( path );
@@ -303,12 +302,18 @@ SpotifyAccount::authenticate()
     if ( m_spotifyResolver.isNull() && state == AtticaManager::Installed )
     {
         // We don;t have the resolver but it has been installed via attica already, so lets just turn it on
-        qDebug() << "No valid spotify resolver running, but attica reports it is installed, so start it up";
+        tLog( LOGVERBOSE ) << "No valid spotify resolver running, but attica reports it is installed, so start it up";
         hookupResolver();
     }
     else if ( m_spotifyResolver.isNull() || manualResolverRemoved )
     {
-        qDebug() << "Got null resolver but asked to authenticate, so installing if we have one from attica:" << res.isValid() << res.id();
+/*        Mon Sep 1 2014 - 02:03:56 [8]: void Tomahawk::Accounts::AccountManager::hookupAndEnable(Tomahawk::Accounts::Account*, bool)
+        Mon Sep 1 2014 - 02:03:56 [8]: Spotify account authenticating...
+        Mon Sep 1 2014 - 02:03:56 [1]: virtual void Tomahawk::Accounts::SpotifyAccount::authenticate() "spotify-linux-x64" true false true
+        Mon Sep 1 2014 - 02:03:56 [8]: Got null resolver but asked to authenticate, so installing if we have one from attica: false "" */
+
+        tDebug() << Q_FUNC_INFO << s_resolverId << m_spotifyResolver.isNull() << manualResolverRemoved << AtticaManager::instance()->resolversLoaded();
+        tLog( LOGVERBOSE ) << "Got null resolver but asked to authenticate, so installing if we have one from attica:" << res.isValid() << res.id();
         if ( res.isValid() && !res.id().isEmpty() )
             AtticaManager::instance()->installResolver( res, false );
         else
@@ -320,12 +325,12 @@ SpotifyAccount::authenticate()
     }
     else if ( !m_spotifyResolver.data()->running() )
     {
-        qDebug() << "Spotify resolver exists but stopped, starting";
+        tLog( LOGVERBOSE ) << "Spotify resolver exists but stopped, starting";
         m_spotifyResolver.data()->start();
     }
     else
     {
-        qDebug() << "Spotify resolver exists and is running, ignore authentication attempt";
+        tLog( LOGVERBOSE ) << "Spotify resolver exists and is running, ignore authentication attempt";
     }
 
     emit connectionStateChanged( connectionState() );
@@ -427,7 +432,7 @@ SpotifyAccount::setManualResolverPath( const QString &resolverPath )
 void
 SpotifyAccount::starTrack(const QString &artist, const QString &title, const bool starred)
 {
-    qDebug() << Q_FUNC_INFO << artist << title << starred;
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << artist << title << starred;
     QVariantMap msg;
     msg[ "_msgtype" ] = "setStarred";
     msg[ "starred" ] = starred;
@@ -440,10 +445,14 @@ SpotifyAccount::starTrack(const QString &artist, const QString &title, const boo
 void
 SpotifyAccount::privateModeChanged()
 {
-    qDebug() << Q_FUNC_INFO << "Sending privateMode";
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Sending privateMode";
     QVariantMap msg;
     msg[ "_msgtype" ] = "setPrivacyMode";
-    msg[ "private" ] = ( m_configWidget.data()->persitentPrivacy() || TomahawkSettings::instance()->privateListeningMode() != TomahawkSettings::PublicListening );
+    bool _private = TomahawkSettings::instance()->privateListeningMode() != TomahawkSettings::PublicListening;
+    if ( m_configWidget) {
+      _private |= m_configWidget->persitentPrivacy();
+    }
+    msg[ "private" ] = _private;
     sendMessage( msg );
 }
 
@@ -805,7 +814,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
 {
     if ( msgType == "credentials" )
     {
-        QVariantHash creds = credentials();
+        QVariantMap creds = credentials();
 
         creds[ "username" ] = msg.value( "username" );
         creds[ "password" ] = msg.value( "password" );
@@ -821,7 +830,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
                 m_configWidget.data()->loginResponse( true, QString(), creds[ "username" ].toString() );
         }
 
-        qDebug() << "Set creds:" << creds.value( "username" ) << creds.value( "password" ) << msg.value( "username" ) << msg.value( "password" );
+        tLog( LOGVERBOSE ) << "Set creds:" << creds.value( "username" ) << creds.value( "password" ) << msg.value( "username" ) << msg.value( "password" );
 
         QVariantHash config = configuration();
         config[ "hasMigrated" ] = true;
@@ -863,7 +872,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
 
             if ( name.isNull() || plid.isNull() || revid.isNull() )
             {
-                qDebug() << "Did not get name and plid and revid for spotify playlist:" << name << plid << revid << plMap;
+                tLog( LOGVERBOSE ) << "Did not get name and plid and revid for spotify playlist:" << name << plid << revid << plMap;
                 continue;
             }
 
@@ -887,7 +896,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
         SpotifyPlaylistInfo* info = m_allSpotifyPlaylists[ plid ];
         if( (info && info->starContainer ) && loveSync() )
         {
-            qDebug() << Q_FUNC_INFO << "SKIPPING" << msgType;
+            tLog( LOGVERBOSE ) << Q_FUNC_INFO << "SKIPPING" << msgType;
             return;
         }
 
@@ -909,16 +918,26 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
     else if ( msgType == "tracksRemoved" )
     {
         const QString plid = msg.value( "playlistid" ).toString();
-        // We should already be syncing this playlist if we get updates for it
-//         Q_ASSERT( m_updaters.contains( plid ) );
 
         if ( !m_updaters.contains( plid ) )
+        {
+            // If the resolver gets out-of-sync with Tomahawk's config, also
+            // inform it that we do not sync the playlist anymore. This is a
+            // very rare case but will lead to crashes if we do not sync
+            // Tomahawk's sync settings to the resolver. See TWK-1397.
+            QVariantMap msg;
+            msg[ "_msgtype" ] = "removeFromSyncList";
+            msg[ "playlistid" ] = plid;
+
+            m_spotifyResolver.data()->sendMessage( msg );
+
             return;
+        }
 
         SpotifyPlaylistInfo* info = m_allSpotifyPlaylists[ plid ];
         if( (info && info->starContainer ) && loveSync() )
         {
-            qDebug() << Q_FUNC_INFO << "SKIPPING" << msgType;
+            tLog( LOGVERBOSE ) << Q_FUNC_INFO << "SKIPPING" << msgType;
             return;
         }
         SpotifyPlaylistUpdater* updater = m_updaters[ plid ];
@@ -938,7 +957,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
     {
         const QString plid = msg.value( "playlistid" ).toString();
         // We should already be syncing this playlist if we get updates for it
-        Q_ASSERT( m_updaters.contains( plid ) );
+        // Q_ASSERT( m_updaters.contains( plid ) );
 
         if ( !m_updaters.contains( plid ) )
             return;
@@ -946,7 +965,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
         SpotifyPlaylistInfo* info = m_allSpotifyPlaylists[ plid ];
         if( (info && info->starContainer ) && loveSync() )
         {
-            qDebug() << Q_FUNC_INFO << "SKIPPING" << msgType;
+            tLog( LOGVERBOSE ) << Q_FUNC_INFO << "SKIPPING" << msgType;
             return;
         }
         SpotifyPlaylistUpdater* updater = m_updaters[ plid ];
@@ -979,14 +998,14 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
         // We should already be syncing this playlist if we get updates for it
         //Q_ASSERT( m_updaters.contains( plid ) );
 
-        qDebug() << Q_FUNC_INFO;
+        tLog( LOGVERBOSE ) << Q_FUNC_INFO;
         if ( !m_updaters.contains( plid ) )
             return;
 
         SpotifyPlaylistInfo* info = m_allSpotifyPlaylists[ plid ];
         if( (info && info->starContainer ) && loveSync() )
         {
-            qDebug() << Q_FUNC_INFO << "SKIPPING" << msgType;
+            tLog( LOGVERBOSE ) << Q_FUNC_INFO << "SKIPPING" << msgType;
             return;
         }
         SpotifyPlaylistUpdater* updater = m_updaters[ plid ];
@@ -1000,7 +1019,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
 
         if( info && info->name != title )
         {
-            qDebug() << "Playlist renamed fetched in tomahawk";
+            tLog( LOGVERBOSE ) << "Playlist renamed fetched in tomahawk";
             updater->spotifyPlaylistRenamed( title, newRev, oldRev  );
         }
 
@@ -1024,10 +1043,8 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
 
         if ( msg.value( "isDebugMsg" ).toBool() )
             tDebug( LOGVERBOSE ) << "SpotifyResolverError: " << error;
-#ifndef ENABLE_HEADLESS
         else
             JobStatusView::instance()->model()->addJob( new ErrorStatusMessage( QString( "Spotify: %1" ).arg( error ) ) );
-#endif
     }
     else if ( msgType == "userChanged" )
     {
@@ -1037,11 +1054,11 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
         if ( m_configWidget.data() )
             m_configWidget.data()->setPlaylists( QList< SpotifyPlaylistInfo* >() );
 
-        qDebug() << "User changed message from spotify:" << rmsg;
+        tLog( LOGVERBOSE ) << "User changed message from spotify:" << rmsg;
     }
     else if ( msgType == "loginResponse" )
     {
-        QVariantHash creds = credentials();
+        QVariantMap creds = credentials();
         creds[ "username" ] = msg.value( "username" ).toString();
         creds[ "password" ] = msg.value( "password" ).toString();
         creds[ "highQuality" ] = msg.value( "highQuality" ).toString();
@@ -1079,7 +1096,7 @@ SpotifyAccount::resolverMessage( const QString &msgType, const QVariantMap &msg 
         const bool loggedIn = msg.value( "loggedIn" ).toBool();
         const QString username = msg.value( "username" ).toString();
 
-        qDebug() << "Got status message with login info:" << loggedIn << username;
+        tLog( LOGVERBOSE ) << "Got status message with login info:" << loggedIn << username;
 
         if ( !loggedIn || username.isEmpty() || credentials().value( "username").toString() != username )
         {
@@ -1179,7 +1196,7 @@ SpotifyAccount::saveConfig()
     if ( m_configWidget.isNull() )
         return;
 
-    QVariantHash creds = credentials();
+    QVariantMap creds = credentials();
     if ( creds.value( "username" ).toString() != m_configWidget.data()->username() ||
          creds.value( "password" ).toString() != m_configWidget.data()->password() ||
          creds.value( "highQuality" ).toBool() != m_configWidget.data()->highQuality() )
@@ -1201,7 +1218,7 @@ SpotifyAccount::saveConfig()
     m_configWidget.data()->saveSettings();
     foreach ( SpotifyPlaylistInfo* pl, m_allSpotifyPlaylists.values() )
     {
-//        qDebug() << "Checking changed state:" << pl->changed << "name:" << pl->name << "sync" << pl->sync << "starred:" << pl->starContainer;
+//        tLog( LOGVERBOSE ) << "Checking changed state:" << pl->changed << "name:" << pl->name << "sync" << pl->sync << "starred:" << pl->starContainer;
         if ( pl->changed )
         {
             pl->changed = false;
@@ -1286,7 +1303,7 @@ SpotifyAccount::startPlaylistSyncWithPlaylist( const QString& msgType, const QVa
     const bool collaborative = msg.value( "collaborative" ).toBool();
     const bool owner = msg.value( "owner" ).toBool();
 
-    qDebug() << "Starting sync with pl:" << id << name;
+    tLog( LOGVERBOSE ) << "Starting sync with pl:" << id << name;
     QVariantList tracks = msg.value( "tracks" ).toList();
 
     // create a list of query/plentries directly
@@ -1306,7 +1323,7 @@ SpotifyAccount::startPlaylistSyncWithPlaylist( const QString& msgType, const QVa
         SpotifyPlaylistInfo* info = m_allSpotifyPlaylists[ id ];
         if ( loveSync() && ( info && info->starContainer ) )
         {
-            qDebug() << "Stopping playlist sync in favour for Love Sync";
+            tLog( LOGVERBOSE ) << "Stopping playlist sync in favour for Love Sync";
             stopPlaylistSync( info, true );
         }
         else
@@ -1341,7 +1358,7 @@ SpotifyAccount::playlistCopyCreated( const QString& msgType, const QVariantMap& 
 {
     Q_UNUSED( msgType );
 
-    qDebug() << Q_FUNC_INFO << "Got response from our createCopyPlaylist command, now creating updater and attaching";
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Got response from our createCopyPlaylist command, now creating updater and attaching";
     const bool success = msg.value( "success" ).toBool();
 
     if ( !success )
@@ -1355,7 +1372,7 @@ SpotifyAccount::playlistCopyCreated( const QString& msgType, const QVariantMap& 
     const QString qid = msg.value( "qid" ).toString();
     const QString title = msg.value( "playlistname" ).toString();
 
-    qDebug() << msg;
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << msg;
     if ( !m_waitingForCreateReply.contains( qid ) )
     {
         qWarning() << "Got a createPlaylist reply for a playlist/qid we were not waiting for :-/ " << qid << m_waitingForCreateReply;
@@ -1372,7 +1389,7 @@ SpotifyAccount::playlistCreated( const QString& msgType, const QVariantMap& msg,
 {
     Q_UNUSED( msgType );
 
-    qDebug() << Q_FUNC_INFO << "Got response from our createPlaylist command, now creating updater and attaching";
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Got response from our createPlaylist command, now creating updater and attaching";
     const bool success = msg.value( "success" ).toBool();
 
     if ( !success )
@@ -1498,7 +1515,7 @@ SpotifyAccount::stopPlaylistSync( SpotifyPlaylistInfo* playlist, bool forceDontD
 
     if ( loveSync() && playlist->starContainer )
     {
-        qDebug() << "LoveSync in action, wont remove playlist " << playlist->name;
+        tLog( LOGVERBOSE ) << "LoveSync in action, wont remove playlist " << playlist->name;
     }
     else if( !loveSync() )
     {
@@ -1519,7 +1536,9 @@ SpotifyAccount::stopPlaylistSync( SpotifyPlaylistInfo* playlist, bool forceDontD
             playlist_ptr tomahawkPl = updater->playlist();
 
             if ( !tomahawkPl.isNull() )
-                Playlist::remove( tomahawkPl );
+            {
+                Playlist::removalHandler()->remove( tomahawkPl );
+            }
 
             updater->deleteLater();
 

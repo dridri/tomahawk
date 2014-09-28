@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *
@@ -24,6 +24,7 @@
 
 #include "Typedefs.h"
 #include "Source.h"
+#include "ViewPage.h"
 
 #include <QModelIndex>
 #include <QStringList>
@@ -38,7 +39,6 @@ class GroupItem;
 namespace Tomahawk {
     class Source;
     class Playlist;
-    class ViewPage;
 }
 
 class SourcesModel : public QAbstractItemModel
@@ -49,7 +49,7 @@ public:
         Invalid = -1,
         Divider = 9,
 
-        Collection = 0,
+        Source = 0,
         Group = 8,
 
         Category = 1,
@@ -63,8 +63,11 @@ public:
         TemporaryPage = 7,
         LovedTracksPage = 10,
 
+        Collection = 14,
         ScriptCollection = 11,
-        Inbox = 12
+
+        Inbox = 12,
+        Queue = 13
     };
 
     enum CategoryType {
@@ -141,15 +144,17 @@ private slots:
     void onScriptCollectionAdded( const Tomahawk::collection_ptr& collection );
     void onScriptCollectionRemoved( const Tomahawk::collection_ptr& collection );
 
+    void onViewPageRemoved( Tomahawk::ViewPage* p );
+
     Tomahawk::ViewPage* scriptCollectionClicked( const Tomahawk::collection_ptr& collection );
     Tomahawk::ViewPage* getScriptCollectionPage( const Tomahawk::collection_ptr& collection ) const;
 
     void onWidgetDestroyed( QWidget* w );
 
     /*
-     *  pageIcon and pageTitle are visible in the source tree, pageName is the internal name in the ViewManager
+     *  name is the internal name in the ViewManager
      */
-    void appendPageItem( const QString& name, const QString& text, const QIcon& icon );
+    void appendPageItem( const QString& name, Tomahawk::ViewPage* page, int sortValue );
 
 private:
     SourceTreeItem* itemFromIndex( const QModelIndex& idx ) const;

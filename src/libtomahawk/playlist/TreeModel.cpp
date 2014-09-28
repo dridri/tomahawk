@@ -42,7 +42,11 @@ TreeModel::TreeModel( QObject* parent )
     : PlayableModel( parent )
     , m_mode( DatabaseMode )
 {
-    setIcon( TomahawkUtils::defaultPixmap( TomahawkUtils::SuperCollection ) );
+    PlayableModel::setIcon( TomahawkUtils::tinted( TomahawkUtils::defaultPixmap(
+                                                       TomahawkUtils::DefaultCollection,
+                                                       TomahawkUtils::Original,
+                                                       // big enough for the ViewPage header on retina
+                                                       QSize( 256, 256 ) ), Qt::white ) );
 
     connect( AudioEngine::instance(), SIGNAL( started( Tomahawk::result_ptr ) ), SLOT( onPlaybackStarted( Tomahawk::result_ptr ) ), Qt::DirectConnection );
     connect( AudioEngine::instance(), SIGNAL( stopped() ), SLOT( onPlaybackStopped() ), Qt::DirectConnection );
@@ -261,7 +265,6 @@ TreeModel::addCollection( const collection_ptr& collection )
     connect( collection.data(), SIGNAL( changed() ), SLOT( onCollectionChanged() ), Qt::UniqueConnection );
 
     setIcon( collection->bigIcon() );
-
     setTitle( collection->prettyName() );
     setDescription( collection->description() );
 }
@@ -375,6 +378,7 @@ TreeModel::onTracksAdded( const QList<Tomahawk::query_ptr>& tracks, const QModel
     }
 
     emit endInsertRows();
+    emit selectRequest( index( 0, 0, parent ) );
 }
 
 

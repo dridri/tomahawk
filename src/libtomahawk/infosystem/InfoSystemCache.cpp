@@ -18,11 +18,7 @@
  */
 
 #include <QtDebug>
-
-
-#ifndef ENABLE_HEADLESS
-    #include <QDesktopServices>
-#endif
+#include <QDesktopServices>
 
 #include "InfoSystemCache.h"
 #include "TomahawkSettings.h"
@@ -39,12 +35,19 @@ namespace Tomahawk
 namespace InfoSystem
 {
 
+const int InfoSystemCache::s_infosystemCacheVersion = 4;
 
 InfoSystemCache::InfoSystemCache( QObject* parent )
     : QObject( parent )
     , m_cacheBaseDir( TomahawkSettings::instance()->storageCacheLocation() + "/InfoSystemCache/" )
 {
     tDebug() << Q_FUNC_INFO;
+
+    if ( TomahawkSettings::instance()->infoSystemCacheVersion() < s_infosystemCacheVersion )
+    {
+        TomahawkUtils::removeDirectory( m_cacheBaseDir );
+        TomahawkSettings::instance()->setInfoSystemCacheVersion( s_infosystemCacheVersion );
+    }
 
     m_pruneTimer.setInterval( 300000 );
     m_pruneTimer.setSingleShot( false );
@@ -192,7 +195,6 @@ InfoSystemCache::notInCache( QObject *receiver, Tomahawk::InfoSystem::InfoString
 void
 InfoSystemCache::updateCacheSlot( Tomahawk::InfoSystem::InfoStringHash criteria, qint64 maxAge, Tomahawk::InfoSystem::InfoType type, QVariant output )
 {
-    //qDebug() << Q_FUNC_INFO;
     const QString criteriaHashVal = criteriaMd5( criteria );
     const QString criteriaHashValWithType = criteriaMd5( criteria, type );
     const QString cacheDir = m_cacheBaseDir + QString::number( (int)type );
@@ -220,7 +222,7 @@ InfoSystemCache::updateCacheSlot( Tomahawk::InfoSystem::InfoStringHash criteria,
     QDir dir( cacheDir );
     if( !dir.exists( cacheDir ) )
     {
-        qDebug() << "Creating cache directory " << cacheDir;
+        qDebug() << "Creating cache directory" << cacheDir;
         if( !dir.mkpath( cacheDir ) )
         {
             tLog() << "Failed to create cache dir! Bailing...";

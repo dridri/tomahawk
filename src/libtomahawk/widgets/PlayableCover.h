@@ -20,6 +20,7 @@
 #define PLAYABLEPIXMAP_H
 
 #include <QLabel>
+#include <QPoint>
 #include <QPaintEvent>
 #include <QResizeEvent>
 
@@ -42,11 +43,21 @@ class DLLEXPORT PlayableCover : public QLabel
 Q_OBJECT
 
 public:
+    enum DisplayType
+    {
+        Artist = 0,
+        Album = 1,
+        Track = 2,
+    };
+
     PlayableCover( QWidget* parent = 0 );
     virtual ~PlayableCover();
 
     bool showText() const { return m_showText; }
-    void setShowText( bool b );
+    bool showControls() const { return m_showControls; }
+
+    DisplayType type() const { return m_type; }
+    void setType( DisplayType type );
 
     QPixmap pixmap() const { return m_pixmap; }
 
@@ -55,17 +66,21 @@ public slots:
     virtual void setAlbum( const Tomahawk::album_ptr& album );
     virtual void setQuery( const Tomahawk::query_ptr& query );
 
+    void setShowText( bool b );
+    void setShowControls( bool b );
     void setPixmap( const QPixmap& pixmap );
 
 protected:
     virtual void resizeEvent( QResizeEvent* event );
     virtual void paintEvent( QPaintEvent* event );
 
+    virtual void mousePressEvent( QMouseEvent* event );
     virtual void mouseMoveEvent( QMouseEvent* event );
     virtual void mouseReleaseEvent( QMouseEvent* event );
+    virtual void mouseDoubleClickEvent( QMouseEvent* event );
 
     virtual void contextMenuEvent( QContextMenuEvent* event );
-    
+
     void leaveEvent( QEvent* event );
     void enterEvent( QEvent* event );
 
@@ -82,10 +97,15 @@ private:
     Tomahawk::album_ptr m_album;
     Tomahawk::query_ptr m_query;
 
+    QPoint m_dragStartPosition;
+
     QList< QRect > m_itemRects;
     QRect m_hoveredRect;
 
     bool m_showText;
+    bool m_showControls;
+
+    DisplayType m_type;
 };
 
 #endif

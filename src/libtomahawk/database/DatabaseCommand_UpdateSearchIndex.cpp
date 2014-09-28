@@ -22,16 +22,13 @@
 #include <QSqlRecord>
 
 #include "DatabaseImpl.h"
-#include "FuzzyIndex.h"
 #include "Source.h"
 #include "TomahawkSqlQuery.h"
+
+#include "fuzzyindex/DatabaseFuzzyIndex.h"
 #include "jobview/IndexingJobItem.h"
-
-#ifndef ENABLE_HEADLESS
-    #include "jobview/JobStatusView.h"
-    #include "jobview/JobStatusModel.h"
-#endif
-
+#include "jobview/JobStatusView.h"
+#include "jobview/JobStatusModel.h"
 #include "utils/Logger.h"
 
 namespace Tomahawk
@@ -43,9 +40,7 @@ DatabaseCommand_UpdateSearchIndex::DatabaseCommand_UpdateSearchIndex()
 {
     tLog() << Q_FUNC_INFO << "Updating index.";
 
-#ifndef ENABLE_HEADLESS
-    JobStatusView::instance()->model()->addJob( m_statusJob.data() );
-#endif
+    JobStatusView::addJob( m_statusJob );
 }
 
 
@@ -53,10 +48,10 @@ DatabaseCommand_UpdateSearchIndex::~DatabaseCommand_UpdateSearchIndex()
 {
     tDebug() << Q_FUNC_INFO;
 
-#ifndef ENABLE_HEADLESS
     if ( ! m_statusJob.isNull() )
+    {
         m_statusJob.data()->done();
-#endif
+    }
 }
 
 

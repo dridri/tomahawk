@@ -33,7 +33,7 @@ Q_OBJECT
 
 public:
     enum PlayableItemStyle
-    { Detailed = 0, Short = 1, ShortWithAvatars = 2, Large = 3, Collection = 4 };
+    { Detailed = 0, Short = 1, Large = 3, Collection = 4 };
 
     enum PlayableProxyModelRole
     { StyleRole = Qt::UserRole + 1, TypeRole };
@@ -52,7 +52,7 @@ public:
     PlayableProxyModel::PlayableItemStyle style() const { return m_style; }
     void setStyle( PlayableProxyModel::PlayableItemStyle style ) { m_style = style; }
 
-    virtual QPersistentModelIndex currentIndex() const { return mapFromSource( m_model->currentItem() ); }
+    virtual QPersistentModelIndex currentIndex() const;
     virtual void setCurrentIndex( const QModelIndex& index );
 
     virtual void removeIndex( const QModelIndex& index );
@@ -95,9 +95,12 @@ signals:
 
     void indexPlayable( const QModelIndex& index );
     void indexResolved( const QModelIndex& index );
-    void currentIndexChanged();
+    void currentIndexChanged( const QModelIndex& newIndex, const QModelIndex& oldIndex );
 
     void itemCountChanged( unsigned int items );
+
+    void expandRequest( const QPersistentModelIndex& index );
+    void selectRequest( const QPersistentModelIndex& index );
 
 protected:
     virtual bool filterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const;
@@ -109,12 +112,20 @@ private slots:
     void onIndexPlayable( const QModelIndex& index );
     void onIndexResolved( const QModelIndex& index );
 
+    void expandRequested( const QPersistentModelIndex& index );
+    void selectRequested( const QPersistentModelIndex& index );
+    void onCurrentIndexChanged( const QModelIndex& newIndex, const QModelIndex& oldIndex );
+
 private:
-    virtual bool lessThan( int column, const Tomahawk::query_ptr& left, const Tomahawk::query_ptr& right ) const;
+    bool nameFilterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const;
+    bool dupeFilterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const;
+    bool visibilityFilterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const;
+    bool lessThan( int column, const Tomahawk::query_ptr& left, const Tomahawk::query_ptr& right ) const;
 
     PlayableModel* m_model;
 
     bool m_showOfflineResults;
+    bool m_hideEmptyParents;
     bool m_hideDupeItems;
     int m_maxVisibleItems;
 

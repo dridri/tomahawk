@@ -19,6 +19,7 @@
 
 #include "Database.h"
 
+#include "utils/Json.h"
 #include "utils/Logger.h"
 
 #include "DatabaseCommand.h"
@@ -142,11 +143,17 @@ Database::~Database()
     delete m_idWorker;
 
     if ( m_workerRW )
+    {
+        // Ensure event loop was started so quit() has any effect.
+        m_workerRW->waitForEventLoopStart();
         m_workerRW.data()->quit();
+    }
     foreach ( QPointer< DatabaseWorkerThread > workerThread, m_workerThreads )
     {
-        if ( workerThread && workerThread.data()->worker() )
-            workerThread.data()->quit();
+        // Ensure event loop was started so quit() has any effect.
+        workerThread->waitForEventLoopStart();
+        // If event loop already was killed, the following is just a no-op.
+        workerThread->quit();
     }
 
     if ( m_workerRW )
@@ -165,6 +172,7 @@ Database::~Database()
     m_workerThreads.clear();
 
     qDeleteAll( m_implHash.values() );
+    qDeleteAll( m_commandFactories.values() );
     delete m_impl;
 
 }
@@ -341,8 +349,11 @@ Database::createCommandInstance(const QVariant& op, const source_ptr& source)
     const QString commandName = op.toMap().value( "command" ).toString();
 
     dbcmd_ptr command = createCommandInstance( commandName );
+    if ( command.isNull() )
+        return command;
+
     command->setSource( source );
-    QJson::QObjectHelper::qvariant2qobject( op.toMap(), command.data() );
+    TomahawkUtils::qvariant2qobject( op.toMap(), command.data() );
     return command;
 }
 

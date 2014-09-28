@@ -2,6 +2,7 @@
  *
  *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
+ *   Copyright 2014,      Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -36,18 +37,18 @@
 #include "TomahawkSqlQuery.h"
 #include "Typedefs.h"
 
-class FuzzyIndex;
 
 namespace Tomahawk
 {
 
 class Database;
+class DatabaseFuzzyIndex;
 
 class DLLEXPORT DatabaseImpl : public QObject
 {
 Q_OBJECT
 
-friend class FuzzyIndex;
+friend class DatabaseFuzzyIndex;
 friend class DatabaseCommand_UpdateSearchIndex;
 
 public:
@@ -86,10 +87,13 @@ public:
 
 signals:
     void indexReady();
+    void schemaUpdateStarted();
+    void schemaUpdateStatus( const QString& message );
+    void schemaUpdateDone();
 
 private:
     DatabaseImpl( const QString& dbname, bool internal );
-    void setFuzzyIndex( FuzzyIndex* fi ) { m_fuzzyIndex = fi; }
+    void setFuzzyIndex( DatabaseFuzzyIndex* fi ) { m_fuzzyIndex = fi; }
     void setDatabaseID( const QString& dbid ) { m_dbid = dbid; }
 
     void init();
@@ -105,7 +109,7 @@ private:
     int m_lastartid, m_lastalbid, m_lasttrkid;
 
     QString m_dbid;
-    FuzzyIndex* m_fuzzyIndex;
+    Tomahawk::DatabaseFuzzyIndex* m_fuzzyIndex;
     mutable QMutex m_mutex;
 };
 

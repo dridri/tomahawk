@@ -19,19 +19,21 @@
 #ifndef ACCOUNTWIDGET_H
 #define ACCOUNTWIDGET_H
 
+#include "utils/DpiScaler.h"
+
 #include <QWidget>
 #include <QPersistentModelIndex>
 
 class AnimatedSpinner;
 class ElidedLabel;
 class SlideSwitchButton;
-class UnstyledFrame;
+class QFrame;
 class QLabel;
 class QLineEdit;
 class QPushButton;
 class QToolButton;
 
-class AccountWidget : public QWidget
+class AccountWidget : public QWidget, private TomahawkUtils::DpiScaler
 {
     Q_OBJECT
 public:
@@ -61,7 +63,7 @@ private:
     SlideSwitchButton* m_statusToggle;
     QLineEdit*         m_inviteEdit;
     QPushButton*       m_inviteButton;
-    UnstyledFrame*     m_inviteContainer;
+    QFrame*            m_inviteContainer;
     QLabel*            m_addAccountIcon;
 
     QPersistentModelIndex m_myFactoryIdx;

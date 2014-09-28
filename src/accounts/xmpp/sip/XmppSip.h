@@ -27,9 +27,7 @@
 
 #include "AvatarManager.h"
 
-#ifndef ENABLE_HEADLESS
-    #include "XmlConsole.h"
-#endif
+#include "XmlConsole.h"
 
 #include "accounts/AccountDllMacro.h"
 #include "accounts/Account.h"
@@ -50,10 +48,7 @@
 #include <jreen/mucroom.h>
 #include <jreen/pubsubmanager.h>
 
-#ifndef ENABLE_HEADLESS
-    #include <QMessageBox>
-#endif
-
+#include <QMessageBox>
 
 class ACCOUNTDLLEXPORT XmppSipPlugin : public SipPlugin
 {
@@ -71,9 +66,7 @@ public:
 
     Tomahawk::InfoSystem::InfoPluginPtr infoPlugin();
 
-#ifndef ENABLE_HEADLESS
     virtual QMenu* menu();
-#endif
 
     // used by XmppAccount to expose connection state and controls
     Tomahawk::Accounts::Account::ConnectionState connectionState() const;
@@ -90,7 +83,7 @@ public slots:
     virtual void disconnectPlugin();
     virtual void checkSettings();
     virtual void configurationChanged();
-    virtual void addContact( const QString& peerId, const QString& msg = QString() );
+    virtual bool addContact( const QString& peerId, AddContactOptions options = NoOptions, const QString& msg = QString() );
 
     virtual void sendSipInfos( const Tomahawk::peerinfo_ptr& receiver, const QList<SipInfo>& info );
 
@@ -146,11 +139,9 @@ private:
     QHash< Jreen::JID, Jreen::Presence::Type > m_peers;
     QHash< QString, QString > m_jidsNames;
 
-#ifndef ENABLE_HEADLESS
     QHash< Jreen::JID, QMessageBox* > m_subscriptionConfirmBoxes;
     QMenu* m_menu;
     XmlConsole* m_xmlConsole;
-#endif
 
     enum IqContext { NoContext, RequestDisco, RequestedDisco, SipMessageSent, RequestedVCard, RequestVersion, RequestedVersion };
     AvatarManager* m_avatarManager;

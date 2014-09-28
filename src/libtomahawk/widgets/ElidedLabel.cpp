@@ -129,7 +129,7 @@ ElidedLabel::init( const QString& txt )
 {
     m_text = txt;
     m_align = Qt::AlignLeft;
-    m_mode = Qt::ElideMiddle;
+    m_mode = Qt::ElideRight;
     m_margin = 0;
     m_multiLine = false;
 
@@ -176,6 +176,8 @@ ElidedLabel::paintEvent( QPaintEvent* event )
 {
     QFrame::paintEvent( event );
     QPainter p( this );
+    p.setRenderHint( QPainter::TextAntialiasing );
+
     QRect r = contentsRect();
     r.adjust( m_margin, m_margin, -m_margin, -m_margin );
 

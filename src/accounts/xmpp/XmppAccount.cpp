@@ -23,6 +23,7 @@
 #include "sip/SipPlugin.h"
 #include "XmppInfoPlugin.h"
 #include "accounts/AccountConfigWidget.h"
+#include "ui_XmppConfigWidget.h"
 
 #include <QtPlugin>
 
@@ -46,6 +47,9 @@ XmppAccount::XmppAccount( const QString &accountId )
     setTypes( SipType );
 
     m_configWidget = QPointer< AccountConfigWidget >( new XmppConfigWidget( this, 0 ) );
+
+    XmppConfigWidget* config = static_cast< XmppConfigWidget* >( m_configWidget.data() );
+    config->m_ui->serviceHint->hide();
 
     m_onlinePixmap = QPixmap( ":/xmpp-account/xmpp-icon.png" );
     m_offlinePixmap = QPixmap( ":/xmpp-account/xmpp-offline-icon.png" );
@@ -77,8 +81,8 @@ XmppAccount::authenticate()
 void
 XmppAccount::deauthenticate()
 {
-    if ( connectionState() != Account::Disconnected )
-        sipPlugin()->disconnectPlugin();
+    if ( connectionState() != Account::Disconnected && !m_xmppSipPlugin.isNull() )
+        m_xmppSipPlugin->disconnectPlugin();
 }
 
 bool
@@ -116,10 +120,13 @@ XmppAccount::infoPlugin()
 
 
 SipPlugin*
-XmppAccount::sipPlugin()
+XmppAccount::sipPlugin( bool create )
 {
     if ( m_xmppSipPlugin.isNull() )
     {
+        if ( !create )
+            return 0;
+
         m_xmppSipPlugin = QPointer< XmppSipPlugin >( new XmppSipPlugin( this ) );
 
         connect( m_xmppSipPlugin.data(), SIGNAL( stateChanged( Tomahawk::Accounts::Account::ConnectionState ) ), this, SIGNAL( connectionStateChanged( Tomahawk::Accounts::Account::ConnectionState ) ) );

@@ -6,7 +6,7 @@ include( AddAppIconMacro )
 # SET( CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" )
 # SET( CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" )
 # SET( CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" )
-IF( NOT CMAKE_BUILD_TYPE STREQUAL "Release" )
+IF( NOT CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     MESSAGE( "Building in debug mode, enabling all debug updates" )
 ENDIF()
 
@@ -33,11 +33,14 @@ IF( LIBLASTFM_FOUND )
 ENDIF( LIBLASTFM_FOUND )
 
 SET( tomahawkSourcesGui ${tomahawkSourcesGui}
+     dialogs/DiagnosticsDialog.cpp
+     dialogs/LoadXSPFDialog.cpp
+     dialogs/SettingsDialog.cpp
+
      sourcetree/SourcesModel.cpp
      sourcetree/SourcesProxyModel.cpp
      sourcetree/SourceTreeView.cpp
      sourcetree/SourceDelegate.cpp
-     sourcetree/AnimationHelper.cpp
      sourcetree/items/ScriptCollectionItem.cpp
      sourcetree/items/SourceTreeItem.cpp
      sourcetree/items/SourceItem.cpp
@@ -47,16 +50,14 @@ SET( tomahawkSourcesGui ${tomahawkSourcesGui}
      sourcetree/items/LovedTracksItem.cpp
      sourcetree/items/TemporaryPageItem.cpp
      sourcetree/items/GroupItem.cpp
+     sourcetree/items/CollectionItem.cpp
      sourcetree/items/HistoryItem.cpp
      sourcetree/items/InboxItem.cpp
+     sourcetree/items/QueueItem.cpp
 
      TomahawkTrayIcon.cpp
      AudioControls.cpp
-     SettingsDialog.cpp
-     DiagnosticsDialog.cpp
      TomahawkWindow.cpp
-     LoadXSPFDialog.cpp
-     SocialWidget.cpp
 
      widgets/ContainedMenuButton.cpp
      widgets/AccountListView.cpp
@@ -66,24 +67,24 @@ SET( tomahawkSourcesGui ${tomahawkSourcesGui}
      widgets/AccountsPopupWidget.cpp
      widgets/AccountsToolButton.cpp
      widgets/SlideSwitchButton.cpp
-     widgets/UnstyledFrame.cpp
+     widgets/SocialWidget.cpp
+     widgets/SplashWidget.cpp
 )
 
-IF( WITH_BREAKPAD )
-    LIST(APPEND tomahawkSourcesGui breakpad/BreakPad.cpp)
-ENDIF()
-
 SET( tomahawkUI ${tomahawkUI}
+     dialogs/DiagnosticsDialog.ui
+     dialogs/HostDialog.ui
+     dialogs/LoadXSPFDialog.ui
+     dialogs/ProxyDialog.ui
+     dialogs/Settings_Accounts.ui
+     dialogs/Settings_Advanced.ui
+     dialogs/Settings_Collection.ui
+
      TomahawkWindow.ui
-     DiagnosticsDialog.ui
-     Settings_Accounts.ui
-     Settings_Advanced.ui
-     Settings_Collection.ui
-     ProxyDialog.ui
 
      AudioControls.ui
-     LoadXSPFDialog.ui
-     SocialWidget.ui
+
+     widgets/SocialWidget.ui
 )
 
 INCLUDE_DIRECTORIES(
@@ -95,22 +96,15 @@ INCLUDE_DIRECTORIES(
     ../libtomahawk
     mac
 
-    ${THIRDPARTY_DIR}/breakpad
+    ${THIRDPARTY_DIR}/libcrashreporter-qt/src/
+    ${THIRDPARTY_DIR}/kdsingleapplicationguard/
 
     ${TAGLIB_INCLUDES}
-    ${PHONON_INCLUDES}
-    ${QJSON_INCLUDE_DIR}
     ${LIBATTICA_INCLUDE_DIR}
     ${ECHONEST_INCLUDE_DIR}
     ${LIBLASTFM_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIR}
 )
-
-IF( QXTWEB_FOUND )
-    LIST(APPEND tomahawkSources web/Api_v1.cpp)
-    LIST(APPEND LINK_LIBRARIES ${QXTWEB_LIBRARIES})
-    INCLUDE_DIRECTORIES(${QXTWEB_INCLUDE_DIRS})
-ENDIF()
 
 SET( OS_SPECIFIC_LINK_LIBRARIES "" )
 
@@ -158,15 +152,19 @@ qt_add_resources( RC_SRCS "../../resources.qrc" )
 SET( final_src ${final_src} ${tomahawkUI_H} ${tomahawkMoc} ${tomahawkSources} ${RC_SRCS} )
 
 
-ADD_EXECUTABLE( tomahawk WIN32 MACOSX_BUNDLE ${final_src} )
-SET_TARGET_PROPERTIES(tomahawk
+ADD_EXECUTABLE( tomahawk_bin WIN32 MACOSX_BUNDLE ${final_src} )
+SET_TARGET_PROPERTIES(tomahawk_bin
     PROPERTIES
         AUTOMOC TRUE
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_BINARY_DIR}/Info.plist"
+        RUNTIME_OUTPUT_NAME tomahawk
 )
 
 
-qt5_use_modules(tomahawk Core Widgets Network Sql WebKitWidgets)
+qt5_use_modules(tomahawk_bin Core Widgets Network Sql WebKitWidgets)
+if(WIN32)
+    qt5_use_modules(tomahawk_bin WinExtras)
+endif()
 
 MESSAGE( STATUS "OS_SPECIFIC_LINK_LIBRARIES: ${OS_SPECIFIC_LINK_LIBRARIES}" )
 
@@ -176,20 +174,20 @@ ENDIF( LIBLASTFM_FOUND )
 IF( QCA2_FOUND )
     LIST(APPEND LINK_LIBRARIES ${LINK_LIBRARIES} ${QCA2_LIBRARIES} )
 ENDIF( QCA2_FOUND )
-IF( WITH_BREAKPAD )
-    LIST(APPEND LINK_LIBRARIES ${LINK_LIBRARIES} tomahawk_breakpad )
+IF( WITH_CRASHREPORTER )
+    LIST(APPEND LINK_LIBRARIES ${LINK_LIBRARIES} crashreporter-handler )
 ENDIF()
 
-TARGET_LINK_LIBRARIES( tomahawk
+TARGET_LINK_LIBRARIES( tomahawk_bin
+    kdsingleapplicationguard
     ${LINK_LIBRARIES}
     ${TOMAHAWK_WIDGETS_LIBRARIES}
+    ${TOMAHAWK_PLAYDARAPI_LIBRARIES}
     ${TOMAHAWK_LIBRARIES}
-    ${PHONON_LIBS}
     ${OS_SPECIFIC_LINK_LIBRARIES}
     ${QT_LIBRARIES}
     ${MAC_EXTRA_LIBS}
     ${ECHONEST_LIBRARIES}
-    ${QJSON_LIBRARIES}
     ${TAGLIB_LIBRARIES}
 )
 
@@ -201,7 +199,7 @@ IF( APPLE )
   ENDIF( HAVE_SPARKLE )
 ENDIF( APPLE )
 
-INSTALL( TARGETS tomahawk BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} )
+INSTALL( TARGETS tomahawk_bin BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} )
 
 IF( UNIX AND NOT APPLE AND KDE4_INSTALLED AND LEGACY_KDE_INTEGRATION ) #install protocol file
   FILE( READ ${CMAKE_SOURCE_DIR}/admin/unix/tomahawk.protocol protocol )

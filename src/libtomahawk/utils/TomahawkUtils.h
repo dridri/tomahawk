@@ -18,6 +18,7 @@
  *   along with Tomahawk. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
 #ifndef TOMAHAWKUTILS_H
 #define TOMAHAWKUTILS_H
 
@@ -138,33 +139,6 @@ namespace TomahawkUtils
     };
 
 
-    class DLLEXPORT NetworkProxyFactory : public QNetworkProxyFactory
-    {
-    public:
-        NetworkProxyFactory()
-            : m_proxy( QNetworkProxy::NoProxy )
-            , m_proxyChanged( false )
-        {}
-
-        NetworkProxyFactory( const NetworkProxyFactory &other );
-        virtual ~NetworkProxyFactory() {}
-
-        virtual QList< QNetworkProxy > queryProxy( const QNetworkProxyQuery & query = QNetworkProxyQuery() );
-
-        virtual void setNoProxyHosts( const QStringList &hosts );
-        virtual QStringList noProxyHosts() const { return m_noProxyHosts; }
-        virtual void setProxy( const QNetworkProxy &proxy );
-        virtual QNetworkProxy proxy() { return m_proxy; }
-
-        virtual NetworkProxyFactory& operator=( const NetworkProxyFactory &rhs );
-        virtual bool operator==( const NetworkProxyFactory &other ) const;
-        bool changed() const { return m_proxyChanged; }
-    private:
-        QStringList m_noProxyHosts;
-        QNetworkProxy m_proxy;
-        bool m_proxyChanged;
-    };
-
     DLLEXPORT bool headless();
     DLLEXPORT void setHeadless( bool headless );
 
@@ -179,23 +153,29 @@ namespace TomahawkUtils
     DLLEXPORT QString timeToString( int seconds );
     DLLEXPORT QString ageToString( const QDateTime& time, bool appendAgoString = false );
     DLLEXPORT QString filesizeToString( unsigned int size );
+    DLLEXPORT QByteArray percentEncode( const QUrl& url );
+
+    DLLEXPORT QStringList supportedExtensions();
     DLLEXPORT QString extensionToMimetype( const QString& extension );
 
     DLLEXPORT void msleep( unsigned int ms );
     DLLEXPORT bool newerVersion( const QString& oldVersion, const QString& newVersion );
     DLLEXPORT int levenshtein( const QString& source, const QString& target );
 
-    DLLEXPORT NetworkProxyFactory* proxyFactory( bool makeClone = false, bool noMutexLocker = false );
-    DLLEXPORT void setProxyFactory( TomahawkUtils::NetworkProxyFactory* factory, bool noMutexLocker = false );
-    DLLEXPORT QNetworkAccessManager* nam();
-    DLLEXPORT void setNam( QNetworkAccessManager* nam, bool noMutexLocker = false );
     DLLEXPORT quint64 infosystemRequestId();
 
     DLLEXPORT QString md5( const QByteArray& data );
     DLLEXPORT bool removeDirectory( const QString& dir );
 
+    /**
+      * Check if this URL refers to a http-Result.
+      *
+      * Attention: This only checks for a http result, not a httpS result.
+      */
     DLLEXPORT bool isHttpResult( const QString& url );
+    DLLEXPORT bool isHttpsResult( const QString& url );
     DLLEXPORT bool isLocalResult( const QString& url );
+    DLLEXPORT bool isRtmpResult( const QString& url );
 
     DLLEXPORT bool verifyFile( const QString& filePath, const QString& signature );
     DLLEXPORT QString extractScriptPayload( const QString& filename, const QString& resolverId, const QString& dirName = "atticaresolvers" );
@@ -208,7 +188,7 @@ namespace TomahawkUtils
     // Used by the above, not exported
     void copyWithAuthentication( const QString& srcFile, const QDir dest, QObject* receiver );
 
-    DLLEXPORT bool whitelistedHttpResultHint( const QString& url );
+    DLLEXPORT bool whitelistedHttpResultHint( const QUrl& url );
 
     DLLEXPORT int compareVersionStrings( const QString& first, const QString& second );
 
@@ -236,6 +216,7 @@ namespace TomahawkUtils
     DLLEXPORT bool urlHasQueryItem( const QUrl& url, const QString& key );
     DLLEXPORT QList<QPair<QString, QString> > urlQueryItems( const QUrl& url );
     DLLEXPORT void urlSetQuery( QUrl& url, const QString& query );
+    DLLEXPORT QByteArray encodedQuery( const QUrl& url );
 
 }
 

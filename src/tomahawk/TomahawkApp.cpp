@@ -1,9 +1,9 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
- *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
+ *   Copyright 2013-2014, Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -37,7 +37,6 @@
 #include "playlist/XspfUpdater.h"
 #include "network/Servent.h"
 #include "network/DbSyncConnection.h"
-#include "web/Api_v1.h"
 #include "SourceList.h"
 #include "ViewManager.h"
 #include "ShortcutHandler.h"
@@ -50,6 +49,7 @@
 #include "EchonestCatalogSynchronizer.h"
 #include "database/DatabaseImpl.h"
 #include "network/Msg.h"
+#include "utils/NetworkAccessManager.h"
 
 #include "accounts/lastfm/LastFmAccount.h"
 #include "accounts/spotify/SpotifyAccount.h"
@@ -69,18 +69,17 @@
 #include "utils/Logger.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/TomahawkCache.h"
+#include "widgets/SplashWidget.h"
 
-#ifndef ENABLE_HEADLESS
-    #include "resolvers/JSResolver.h"
-    #include "resolvers/ScriptResolver.h"
-    #include "utils/SpotifyParser.h"
-    #include "AtticaManager.h"
-    #include "TomahawkWindow.h"
-    #include "SettingsDialog.h"
-    #include "ActionCollection.h"
-    #include "widgets/HeaderLabel.h"
-    #include "TomahawkSettingsGui.h"
-#endif
+#include "resolvers/JSResolver.h"
+#include "resolvers/ScriptResolver.h"
+#include "utils/SpotifyParser.h"
+#include "AtticaManager.h"
+#include "TomahawkWindow.h"
+#include "dialogs/SettingsDialog.h"
+#include "ActionCollection.h"
+#include "widgets/HeaderLabel.h"
+#include "utils/TomahawkStyle.h"
 
 #include "config.h"
 
@@ -92,21 +91,17 @@
     #include "linux/GnomeShortcutHandler.h"
 #endif
 
-#ifndef ENABLE_HEADLESS
-    #include <QMessageBox>
+#ifdef Q_OS_MAC
+    #include "mac/MacShortcutHandler.h"
+
+    #include <sys/resource.h>
+    #include <sys/sysctl.h>
 #endif
 
-#ifdef Q_WS_MAC
-#include "mac/MacShortcutHandler.h"
-
-#include <sys/resource.h>
-#include <sys/sysctl.h>
-#endif
-
-#include <QPluginLoader>
 #include <QDir>
 #include <QMetaType>
 #include <QTime>
+#include <QMessageBox>
 #include <QNetworkReply>
 #include <QFile>
 #include <QFileInfo>
@@ -145,9 +140,8 @@ using namespace Tomahawk;
 
 TomahawkApp::TomahawkApp( int& argc, char *argv[] )
     : TOMAHAWK_APPLICATION( argc, argv )
-#ifndef ENABLE_HEADLESS
     , m_mainwindow( 0 )
-#endif
+    , m_splashWidget( 0 )
     , m_headless( false )
 {
     if ( arguments().contains( "--help" ) || arguments().contains( "-h" ) )
@@ -175,30 +169,46 @@ TomahawkApp::init()
 
     tLog() << "Starting Tomahawk...";
 
-#ifdef ENABLE_HEADLESS
     m_headless = true;
-#else
     m_headless = arguments().contains( "--headless" );
     setWindowIcon( QIcon( RESPATH "icons/tomahawk-icon-128x128.png" ) );
     setQuitOnLastWindowClosed( false );
 
+    if ( arguments().contains( "--splash" ) )
+    {
+        startSplashWidget( "Splash screen test\n" );
+        updateSplashWidgetMessage( "Splash screen test\n2/7" );
+    }
+
+    TomahawkStyle::loadFonts();
     QFont f = font();
+    TomahawkUtils::setSystemFont( f );
+    f.setFamily( "Roboto" );
+#ifdef Q_OS_WIN
+    f.setPointSize( 10 );
+#endif
 #ifdef Q_OS_MAC
     f.setPointSize( f.pointSize() - 2 );
-    setFont( f );
 #endif
 
-    tDebug() << "Default font:" << f.pixelSize() << f.pointSize() << f.pointSizeF() << f.family();
-    tDebug() << "Font height:" << QFontMetrics( f ).height();
+    setFont( f );
+    tDebug() << "Default font:" << f.pixelSize() << f.pointSizeF() << f.family() << QFontMetrics( f ).height();
     TomahawkUtils::setDefaultFontSize( f.pointSize() );
-#endif
 
     TomahawkUtils::setHeadless( m_headless );
     new ACLRegistryImpl( this );
 
-    tDebug( LOGINFO ) << "Setting NAM.";
+    TomahawkSettings *s = TomahawkSettings::instance();
+    Tomahawk::Utils::setProxyDns( s->proxyDns() );
+    Tomahawk::Utils::setProxyType( s->proxyType() );
+    Tomahawk::Utils::setProxyHost( s->proxyHost() );
+    Tomahawk::Utils::setProxyPort( s->proxyPort() );
+    Tomahawk::Utils::setProxyUsername( s->proxyUsername() );
+    Tomahawk::Utils::setProxyPassword( s->proxyPassword() );
+    Tomahawk::Utils::setProxyNoProxyHosts( s->proxyNoProxyHosts() );
+
     // Cause the creation of the nam, but don't need to address it directly, so prevent warning
-    Q_UNUSED( TomahawkUtils::nam() );
+    tDebug() << "Setting NAM:" << Tomahawk::Utils::nam();
 
     m_audioEngine = QPointer<AudioEngine>( new AudioEngine );
 
@@ -211,31 +221,25 @@ TomahawkApp::init()
     tDebug() << "Init Database.";
     initDatabase();
 
-    m_scanManager = QPointer<ScanManager>( new ScanManager( this ) );
-
-#ifndef ENABLE_HEADLESS
-    Pipeline::instance()->addExternalResolverFactory( boost::bind( &JSResolver::factory, _1, _2 ) );
-    Pipeline::instance()->addExternalResolverFactory( boost::bind( &ScriptResolver::factory, _1, _2 ) );
+    Pipeline::instance()->addExternalResolverFactory( boost::bind( &JSResolver::factory, _1, _2, _3 ) );
+    Pipeline::instance()->addExternalResolverFactory( boost::bind( &ScriptResolver::factory, _1, _2, _3 ) );
 
     new ActionCollection( this );
     connect( ActionCollection::instance()->getAction( "quit" ), SIGNAL( triggered() ), SLOT( quit() ), Qt::UniqueConnection );
-#endif
 
     QByteArray magic = QByteArray::fromBase64( enApiSecret );
     QByteArray wand = QByteArray::fromBase64( QCoreApplication::applicationName().toLatin1() );
     int length = magic.length(), n2 = wand.length();
-    for ( int i=0; i<length; i++ ) magic[i] = magic[i] ^ wand[i%n2];
+    for ( int i = 0; i < length; i++ ) magic[i] = magic[i] ^ wand[i%n2];
     Echonest::Config::instance()->setAPIKey( magic );
 
-#ifndef ENABLE_HEADLESS
     tDebug() << "Init Echonest Factory.";
     GeneratorFactory::registerFactory( "echonest", new EchonestFactory );
-#endif
     tDebug() << "Init Database Factory.";
     GeneratorFactory::registerFactory( "database", new DatabaseFactory );
 
     // Register shortcut handler for this platform
-#ifdef Q_WS_MAC
+#ifdef Q_OS_MAC
     m_shortcutHandler = QPointer<Tomahawk::ShortcutHandler>( new MacShortcutHandler( this ) );
     Tomahawk::setShortcutHandler( static_cast<MacShortcutHandler*>( m_shortcutHandler.data() ) );
 
@@ -262,6 +266,9 @@ TomahawkApp::init()
         connect( m_shortcutHandler.data(), SIGNAL( mute() ), m_audioEngine.data(), SLOT( mute() ) );
     }
 
+    connect( Playlist::removalHandler().data(), SIGNAL( aboutToBeDeletePlaylist( Tomahawk::playlist_ptr ) ),
+             SLOT( playlistRemoved( Tomahawk::playlist_ptr ) ));
+
     tDebug() << "Init InfoSystem.";
     m_infoSystem = QPointer<Tomahawk::InfoSystem::InfoSystem>( Tomahawk::InfoSystem::InfoSystem::instance() );
     connect( m_infoSystem, SIGNAL( ready() ), SLOT( onInfoSystemReady() ) );
@@ -272,10 +279,8 @@ TomahawkApp::~TomahawkApp()
 {
     tDebug( LOGVERBOSE ) << "Shutting down Tomahawk...";
 
-    if ( !m_httpv1_session.isNull() )
-        delete m_httpv1_session.data();
-    if ( !m_httpv1_connector.isNull() )
-        delete m_httpv1_connector.data();
+    // Notify Logger that we are shutting down so we skip the locale
+    tLogNotifyShutdown();
 
     if ( Pipeline::instance() )
         Pipeline::instance()->stop();
@@ -289,11 +294,8 @@ TomahawkApp::~TomahawkApp()
         delete m_scanManager.data();
 
     delete Tomahawk::Accounts::AccountManager::instance();
-
-#ifndef ENABLE_HEADLESS
-    delete AtticaManager::instance();
+    AtticaManager::deleteInstace();
     delete m_mainwindow;
-#endif
 
     // Main Window uses the AudioEngine, so delete it later.
     if ( !m_audioEngine.isNull() )
@@ -352,13 +354,11 @@ TomahawkApp::printHelp()
 }
 
 
-#ifndef ENABLE_HEADLESS
 AudioControls*
 TomahawkApp::audioControls()
 {
     return m_mainwindow->audioControls();
 }
-#endif
 
 
 void
@@ -462,6 +462,8 @@ TomahawkApp::initDatabase()
 
     tDebug( LOGEXTRA ) << "Using database:" << dbpath;
     m_database = QPointer<Tomahawk::Database>( new Tomahawk::Database( dbpath, this ) );
+    // this also connects dbImpl schema update signals
+
     Pipeline::instance()->databaseReady();
 }
 
@@ -469,43 +471,22 @@ TomahawkApp::initDatabase()
 void
 TomahawkApp::initHTTP()
 {
-    if ( !TomahawkSettings::instance()->httpEnabled() )
+    if ( TomahawkSettings::instance()->httpEnabled() )
     {
-        tLog() << "Stopping HTTPd, not enabled";
-        if ( !m_httpv1_session.isNull() )
-            delete m_httpv1_session.data();
-        if ( !m_httpv1_connector.isNull() )
-            delete m_httpv1_connector.data();
-        return;
+        if ( !playdarApi.isNull() )
+        {
+            delete playdarApi.data();
+        }
+        if ( TomahawkSettings::instance()->httpBindAll() )
+        {
+            playdarApi = new PlaydarApi( QHostAddress::Any, 60210, 60211, this ); // TODO Auth
+        }
+        else
+        {
+            playdarApi = new PlaydarApi( QHostAddress::LocalHost, 60210, 60211, this ); // TODO Config port
+        }
+        playdarApi->start();
     }
-
-    if ( m_httpv1_session )
-    {
-        tLog() << "HTTPd session already exists, returning";
-        return;
-    }
-
-    m_httpv1_session = QPointer< QxtHttpSessionManager >( new QxtHttpSessionManager() );
-    m_httpv1_connector = QPointer< QxtHttpServerConnector >( new QxtHttpServerConnector );
-    if ( m_httpv1_session.isNull() || m_httpv1_connector.isNull() )
-    {
-        if ( !m_httpv1_session.isNull() )
-            delete m_httpv1_session.data();
-        if ( !m_httpv1_connector.isNull() )
-            delete m_httpv1_connector.data();
-        tLog() << "Failed to start HTTPd, could not create object";
-        return;
-    }
-
-    m_httpv1_session.data()->setPort( 60210 ); //TODO config
-    m_httpv1_session.data()->setListenInterface( QHostAddress::LocalHost );
-    m_httpv1_session.data()->setConnector( m_httpv1_connector.data() );
-
-    Api_v1* api = new Api_v1( m_httpv1_session.data() );
-    m_httpv1_session.data()->setStaticContentService( api );
-
-    tLog() << "Starting HTTPd on" << m_httpv1_session.data()->listenInterface().toString() << m_httpv1_session.data()->port();
-    m_httpv1_session.data()->start();
 }
 
 
@@ -523,7 +504,7 @@ TomahawkApp::initLocalCollection()
     connect( SourceList::instance(), SIGNAL( ready() ), SLOT( initServent() ) );
 
     source_ptr src( new Source( 0, Database::instance()->impl()->dbid() ) );
-    src->setFriendlyName( tr( "My Collection" ) );
+    src->setFriendlyName( tr( "You" ) );
     collection_ptr coll( new LocalCollection( src ) );
 
     src->addCollection( coll );
@@ -553,9 +534,9 @@ TomahawkApp::initServent()
     int externalPort = TomahawkSettings::instance()->externalPort();
     bool autodetectIp = TomahawkSettings::instance()->autoDetectExternalIp();
 #if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
-    if ( !Servent::instance()->startListening( QHostAddress( QHostAddress::Any ), upnp, port, mode, defaultPort, autodetectIp, externalHostname, externalPort ) )
+    if ( !Servent::instance()->startListening( QHostAddress::Any, upnp, port, mode, defaultPort, autodetectIp, externalHostname, externalPort ) )
 #else
-    if ( !Servent::instance()->startListening( QHostAddress( QHostAddress::AnyIPv6 ), upnp, port, mode, defaultPort, autodetectIp, externalHostname, externalPort ) )
+    if ( !Servent::instance()->startListening( QHostAddress::AnyIPv6, upnp, port, mode, defaultPort, autodetectIp, externalHostname, externalPort ) )
 #endif
     {
         tLog() << "Failed to start listening with servent";
@@ -617,8 +598,7 @@ TomahawkApp::onInfoSystemReady()
 
     TomahawkSettings* s = TomahawkSettings::instance();
 
-    Echonest::Config::instance()->setNetworkAccessManager( TomahawkUtils::nam() );
-#ifndef ENABLE_HEADLESS
+    Echonest::Config::instance()->setNetworkAccessManager( Tomahawk::Utils::nam() );
     EchonestGenerator::setupCatalogs();
 
     if ( !m_headless )
@@ -632,17 +612,20 @@ TomahawkApp::onInfoSystemReady()
             m_mainwindow->show();
         }
     }
-#endif
 
     tDebug() << "Init Local Collection.";
     initLocalCollection();
     tDebug() << "Init Pipeline.";
     initPipeline();
 
-#ifndef ENABLE_HEADLESS
+    m_scanManager = QPointer<ScanManager>( new ScanManager( this ) );
+    if ( arguments().contains( "--filescan" ) )
+    {
+        m_scanManager.data()->runFullRescan();
+    }
+
     // load remote list of resolvers able to be installed
     AtticaManager::instance();
-#endif
 
     if ( arguments().contains( "--http" ) || TomahawkSettings::instance()->value( "network/http", true ).toBool() )
     {
@@ -650,22 +633,15 @@ TomahawkApp::onInfoSystemReady()
     }
     connect( TomahawkSettings::instance(), SIGNAL( changed() ), SLOT( initHTTP() ) );
 
-#ifndef ENABLE_HEADLESS
     if ( !s->hasScannerPaths() )
     {
         m_mainwindow->showSettingsDialog();
     }
-#endif
 
 #ifdef LIBLASTFM_FOUND
     tDebug() << "Init Scrobbler.";
     m_scrobbler = new Scrobbler( this );
 #endif
-
-    if ( arguments().contains( "--filescan" ) )
-    {
-        m_scanManager.data()->runFullRescan();
-    }
 
     // Set up echonest catalog synchronizer
     Tomahawk::EchonestCatalogSynchronizer::instance();
@@ -682,14 +658,12 @@ TomahawkApp::onInfoSystemReady()
         QApplication::setWheelScrollLines( qt_settings.value( "wheelScrollLines", QApplication::wheelScrollLines() ).toInt() );
     }
 
-#ifndef ENABLE_HEADLESS
     // Make sure to init GAM in the gui thread
     GlobalActionManager::instance();
 
     // check if our spotify playlist api server is up and running, and enable spotify playlist drops if so
-    QNetworkReply* r = TomahawkUtils::nam()->get( QNetworkRequest( QUrl( SPOTIFY_PLAYLIST_API_URL "/pong" ) ) );
+    QNetworkReply* r = Tomahawk::Utils::nam()->get( QNetworkRequest( QUrl( SPOTIFY_PLAYLIST_API_URL "/pong" ) ) );
     connect( r, SIGNAL( finished() ), this, SLOT( spotifyApiCheckFinished() ) );
-#endif
 
 #ifdef Q_OS_MAC
     // Make sure to do this after main window is inited
@@ -698,6 +672,60 @@ TomahawkApp::onInfoSystemReady()
 
     initEnergyEventHandler();
     emit tomahawkLoaded();
+}
+
+
+void
+TomahawkApp::onSchemaUpdateStarted()
+{
+    startSplashWidget( tr( "Updating database\n" ) );
+}
+
+
+void
+TomahawkApp::onSchemaUpdateStatus( const QString& status )
+{
+    updateSplashWidgetMessage( tr("Updating database\n%1" ).arg( status ) );
+}
+
+
+void
+TomahawkApp::onSchemaUpdateDone()
+{
+    killSplashWidget();
+}
+
+
+void
+TomahawkApp::startSplashWidget( const QString& initialMessage )
+{
+    tDebug() << Q_FUNC_INFO;
+    m_splashWidget = new SplashWidget();
+    m_splashWidget->showMessage( initialMessage );
+    m_splashWidget->show();
+}
+
+
+void
+TomahawkApp::updateSplashWidgetMessage( const QString& message )
+{
+    if ( m_splashWidget )
+    {
+        m_splashWidget->showMessage( message );
+    }
+}
+
+
+void
+TomahawkApp::killSplashWidget()
+{
+    tDebug() << Q_FUNC_INFO;
+    if ( m_splashWidget )
+    {
+        m_splashWidget->finish( mainWindow() );
+        m_splashWidget->deleteLater();
+    }
+    m_splashWidget = 0;
 }
 
 
@@ -717,44 +745,69 @@ TomahawkApp::ipDetectionFailed( QNetworkReply::NetworkError error, QString error
 void
 TomahawkApp::spotifyApiCheckFinished()
 {
-#ifndef ENABLE_HEADLESS
     QNetworkReply* reply = qobject_cast< QNetworkReply* >( sender() );
     Q_ASSERT( reply );
 
     DropJob::setCanParseSpotifyPlaylists( !reply->error() );
-#endif
 }
 
 
 void
 TomahawkApp::activate()
 {
-#ifndef ENABLE_HEADLESS
     TomahawkUtils::bringToFront();
-#endif
 }
 
 
 bool
 TomahawkApp::loadUrl( const QString& url )
 {
-    QFile f( url );
-    QFileInfo info( f );
-    if ( info.suffix() == "xspf" )
+    if ( !url.startsWith( "tomahawk://" ) )
     {
-        XSPFLoader* l = new XSPFLoader( true, this );
-        tDebug( LOGINFO ) << "Loading spiff:" << url;
-        l->load( QUrl::fromUserInput( url ) );
+        QFile f( url );
+        QFileInfo info( f );
+        if ( info.suffix().toLower() == "xspf" )
+        {
+            XSPFLoader* l = new XSPFLoader( true, this );
+            tDebug( LOGINFO ) << "Loading spiff:" << url;
+            l->load( QUrl::fromUserInput( url ) );
 
-        return true;
-    }
-    else if ( info.suffix() == "jspf" )
-    {
-        JSPFLoader* l = new JSPFLoader( true, this );
-        tDebug( LOGINFO ) << "Loading j-spiff:" << url;
-        l->load( QUrl::fromUserInput( url ) );
+            return true;
+        }
+        else if ( info.suffix().toLower() == "jspf" )
+        {
+            JSPFLoader* l = new JSPFLoader( true, this );
+            tDebug( LOGINFO ) << "Loading j-spiff:" << url;
+            l->load( QUrl::fromUserInput( url ) );
 
-        return true;
+            return true;
+        }
+        else if ( info.suffix().toLower() == "axe" )
+        {
+            QFileInfo fi( url );
+            if ( fi.exists() )
+            {
+                tDebug( LOGINFO ) << "Loading AXE from file:" << url;
+                GlobalActionManager::instance()->installResolverFromFile( fi.absoluteFilePath() );
+
+                return true;
+            }
+        }
+        else if ( TomahawkUtils::supportedExtensions().contains( info.suffix().toLower() ) )
+        {
+            if ( info.exists() )
+            {
+                QString furl = url;
+                if ( furl.startsWith( "file://" ) )
+                    furl = furl.right( furl.length() - 7 );
+
+                AudioEngine::instance()->play( QUrl::fromLocalFile( furl ) );
+                return true;
+            }
+            tDebug() << Q_FUNC_INFO << "Unable to find:" << info.absoluteFilePath();
+
+            return false;
+        }
     }
 
     return GlobalActionManager::instance()->openUrl( url );
@@ -821,6 +874,13 @@ TomahawkApp::instanceStarted( KDSingleApplicationGuard::Instance instance )
         AudioEngine::instance()->raiseVolume();
     else
         activate();
+}
+
+
+void
+TomahawkApp::playlistRemoved( const playlist_ptr& playlist )
+{
+    TomahawkSettings::instance()->removePlaylistSettings( playlist->guid() );
 }
 
 

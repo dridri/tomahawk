@@ -2,6 +2,7 @@
  *
  *   Copyright 2013, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2013, Teo Mrnjavac <teo@kde.org>
+ *   Copyright 2013, Uwe L. Korn <uwelk@xhochy.com>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -17,10 +18,7 @@
  *   along with Tomahawk. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Track.h"
-
-#include <QtAlgorithms>
-#include <QReadWriteLock>
+#include "Track_p.h"
 
 #include "audio/AudioEngine.h"
 #include "collection/Collection.h"
@@ -36,6 +34,10 @@
 #include "PlaylistEntry.h"
 #include "SourceList.h"
 
+#include <QtAlgorithms>
+#include <QDateTime>
+#include <QReadWriteLock>
+
 
 using namespace Tomahawk;
 
@@ -47,9 +49,24 @@ static QMutex s_nameCacheMutex;
 inline QString
 cacheKey( const QString& artist, const QString& track, const QString& album, int duration, const QString& composer, unsigned int albumpos, unsigned int discnumber )
 {
+    const QString durationStr = QString::number( duration );
+    const QString albumposStr = QString::number( albumpos );
+    const QString discnumberStr = QString::number( discnumber );
     QString str;
-    QTextStream stream( &str );
-    stream << artist << track << album << composer << duration << albumpos << discnumber;
+    // Preallocate space so that we will only call malloc once.
+    // With Qt5 we can possibly revert back to just "+" these strings.
+    // The "+" implementation in Qt4 differs slighty depending on compile
+    // options which could drastically reduce the performance.
+    str.reserve( artist.size() + track.size() + album.size()
+                 + composer.size() + durationStr.size()
+                 + albumposStr.size() + discnumberStr.size() );
+    str += artist;
+    str += track;
+    str += album;
+    str += composer;
+    str += durationStr;
+    str += albumposStr;
+    str += discnumberStr;
     return str;
 }
 
@@ -59,7 +76,8 @@ Track::get( const QString& artist, const QString& track, const QString& album, i
 {
     if ( artist.trimmed().isEmpty() || track.trimmed().isEmpty() )
     {
-        Q_ASSERT( false );
+        tDebug() << "Artist:" << artist << "Track:" << track;
+        Q_ASSERT_X( false , Q_FUNC_INFO, "Given artist or track is empty" );
         return track_ptr();
     }
 
@@ -101,26 +119,20 @@ Track::get( unsigned int id, const QString& artist, const QString& track, const 
 
 
 Track::Track( unsigned int id, const QString& artist, const QString& track, const QString& album, int duration, const QString& composer, unsigned int albumpos, unsigned int discnumber )
-    : m_composer( composer )
-    , m_album( album )
-    , m_duration( duration )
-    , m_albumpos( albumpos )
-    , m_discnumber( discnumber )
+    : d_ptr( new TrackPrivate( this, album, duration, composer, albumpos, discnumber ) )
 {
-    m_trackData = TrackData::get( id, artist, track );
+    Q_D( Track );
+    d->trackData = TrackData::get( id, artist, track );
 
     init();
 }
 
 
 Track::Track( const QString& artist, const QString& track, const QString& album, int duration, const QString& composer, unsigned int albumpos, unsigned int discnumber )
-    : m_composer( composer )
-    , m_album( album )
-    , m_duration( duration )
-    , m_albumpos( albumpos )
-    , m_discnumber( discnumber )
+    : d_ptr( new TrackPrivate( this, album, duration, composer, albumpos, discnumber ) )
 {
-    m_trackData = TrackData::get( 0, artist, track );
+    Q_D( Track );
+    d->trackData = TrackData::get( 0, artist, track );
 
     init();
 }
@@ -133,24 +145,94 @@ Track::~Track()
 
 
 void
-Track::init()
+Track::setArtist( const QString& artist )
 {
+    Q_D( Track );
+
+    d->artistPtr = artist_ptr();
+    d->trackData = TrackData::get( 0, artist, track() );
+
+    init();
+    emit updated();
+}
+
+
+void
+Track::setAlbum( const QString& album )
+{
+    Q_D( Track );
+
+    d->albumPtr = album_ptr();
+    d->album = album;
     updateSortNames();
 
-    connect( m_trackData.data(), SIGNAL( attributesLoaded() ), SIGNAL( attributesLoaded() ) );
-    connect( m_trackData.data(), SIGNAL( socialActionsLoaded() ), SIGNAL( socialActionsLoaded() ) );
-    connect( m_trackData.data(), SIGNAL( statsLoaded() ), SIGNAL( statsLoaded() ) );
-    connect( m_trackData.data(), SIGNAL( similarTracksLoaded() ), SIGNAL( similarTracksLoaded() ) );
-    connect( m_trackData.data(), SIGNAL( lyricsLoaded() ), SIGNAL( lyricsLoaded() ) );
+    emit updated();
+}
+
+
+void
+Track::setTrack( const QString& track )
+{
+    Q_D( Track );
+
+    d->trackData = TrackData::get( 0, artist(), track );
+
+    init();
+    emit updated();
+}
+
+
+void
+Track::setAlbumPos( unsigned int albumpos )
+{
+    Q_D( Track );
+
+    d->albumpos = albumpos;
+
+    emit updated();
+}
+
+
+void
+Track::setAttributes( const QVariantMap& map )
+{
+    Q_D( Track );
+
+    d->trackData->setAttributes( map );
+
+    emit attributesLoaded();
+}
+
+
+void
+Track::init()
+{
+    Q_D( Track );
+    updateSortNames();
+
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
+    QObject::connect( d->trackData.data(), &TrackData::attributesLoaded, this, &Track::attributesLoaded );
+    QObject::connect( d->trackData.data(), &TrackData::socialActionsLoaded, this, &Track::socialActionsLoaded );
+    QObject::connect( d->trackData.data(), &TrackData::statsLoaded, this, &Track::statsLoaded );
+    QObject::connect( d->trackData.data(), &TrackData::similarTracksLoaded, this, &Track::similarTracksLoaded );
+    QObject::connect( d->trackData.data(), &TrackData::lyricsLoaded, this, &Track::lyricsLoaded );
+#else
+    connect( d->trackData.data(), SIGNAL( attributesLoaded() ), SIGNAL( attributesLoaded() ) );
+    connect( d->trackData.data(), SIGNAL( socialActionsLoaded() ), SIGNAL( socialActionsLoaded() ) );
+    connect( d->trackData.data(), SIGNAL( statsLoaded() ), SIGNAL( statsLoaded() ) );
+    connect( d->trackData.data(), SIGNAL( similarTracksLoaded() ), SIGNAL( similarTracksLoaded() ) );
+    connect( d->trackData.data(), SIGNAL( lyricsLoaded() ), SIGNAL( lyricsLoaded() ) );
+#endif
 }
 
 
 void
 Track::deleteLater()
 {
+    Q_D( Track );
     QMutexLocker lock( &s_nameCacheMutex );
 
-    const QString key = cacheKey( artist(), track(), m_album, m_duration, m_composer, m_albumpos, m_discnumber );
+    const QString key = cacheKey( artist(), track(), d->album, d->duration, d->composer, d->albumpos, d->discnumber );
     if ( s_tracksByName.contains( key ) )
     {
         s_tracksByName.remove( key );
@@ -163,7 +245,24 @@ Track::deleteLater()
 unsigned int
 Track::trackId() const
 {
-    return m_trackData->trackId();
+    Q_D( const Track );
+    return d->trackData->trackId();
+}
+
+
+QWeakPointer<Track>
+Track::weakRef()
+{
+    Q_D( Track );
+    return d->ownRef;
+}
+
+
+void
+Track::setWeakRef( QWeakPointer<Track> weakRef )
+{
+    Q_D( Track );
+    d->ownRef = weakRef;
 }
 
 
@@ -191,6 +290,7 @@ Track::finishPlaying( int timeElapsed )
 void
 Track::markAsListened()
 {
+    Q_D( Track );
     if ( !isListened() )
     {
         DatabaseCommand_ModifyInboxEntry* cmd = new DatabaseCommand_ModifyInboxEntry( toQuery(), false );
@@ -206,9 +306,9 @@ Track::markAsListened()
                 it->value = false; //listened!
             }
         }
-        m_trackData->blockSignals( true );
-        m_trackData->setAllSocialActions( actions ); //emits socialActionsLoaded which gets propagated here
-        m_trackData->blockSignals( false );
+        d->trackData->blockSignals( true );
+        d->trackData->setAllSocialActions( actions ); //emits socialActionsLoaded which gets propagated here
+        d->trackData->blockSignals( false );
     }
 }
 
@@ -232,15 +332,17 @@ Track::isListened() const
 void
 Track::updateSortNames()
 {
-    m_composerSortname = DatabaseImpl::sortname( m_composer, true );
-    m_albumSortname = DatabaseImpl::sortname( m_album );
+    Q_D( Track );
+    d->composerSortname = DatabaseImpl::sortname( d->composer, true );
+    d->albumSortname = DatabaseImpl::sortname( d->album );
 }
 
 
 void
 Track::setAllSocialActions( const QList< SocialAction >& socialActions )
 {
-    m_trackData->setAllSocialActions( socialActions );
+    Q_D( Track );
+    d->trackData->setAllSocialActions( socialActions );
 }
 
 
@@ -287,87 +389,115 @@ Track::toString() const
 query_ptr
 Track::toQuery()
 {
-    if ( m_query.isNull() )
+    Q_D( Track );
+    if ( d->query.isNull() )
     {
         query_ptr query = Tomahawk::Query::get( weakRef().toStrongRef() );
         if ( !query )
             return query_ptr();
 
-        m_query = query->weakRef();
+        d->query = query->weakRef();
         return query;
     }
 
-    return m_query.toStrongRef();
+    return d->query.toStrongRef();
+}
+
+
+const QString&
+Track::composerSortname() const
+{
+    Q_D( const Track );
+    return d->composerSortname;
+}
+
+
+const QString&
+Track::albumSortname() const
+{
+    Q_D( const Track );
+    return d->albumSortname;
 }
 
 
 void
 Track::loadStats()
 {
-    m_trackData->loadStats();
+    Q_D( Track );
+    d->trackData->loadStats();
 }
 
 
 QList< Tomahawk::PlaybackLog >
 Track::playbackHistory( const Tomahawk::source_ptr& source ) const
 {
-    return m_trackData->playbackHistory( source );
+    Q_D( const Track );
+    return d->trackData->playbackHistory( source );
 }
 
 
 unsigned int
 Track::playbackCount( const source_ptr& source )
 {
-    return m_trackData->playbackCount( source );
+    Q_D( Track );
+    return d->trackData->playbackCount( source );
 }
 
 
 unsigned int
 Track::chartPosition() const
 {
-    return m_trackData->chartPosition();
+    Q_D( const Track );
+    return d->trackData->chartPosition();
 }
 
 
 unsigned int
 Track::chartCount() const
 {
-    return m_trackData->chartCount();
+    Q_D( const Track );
+    return d->trackData->chartCount();
 }
 
 
 void
 Track::loadAttributes()
 {
-    m_trackData->loadAttributes();
+    Q_D( Track );
+    d->trackData->loadAttributes();
 }
 
 
 void
-Track::loadSocialActions()
+Track::loadSocialActions( bool force )
 {
-    m_trackData->loadSocialActions();
+    Q_D( Track );
+
+    d->trackData->loadSocialActions( force );
 }
 
 
 QList< SocialAction >
 Track::allSocialActions() const
 {
-    return m_trackData->allSocialActions();
+    Q_D( const Track );
+    return d->trackData->allSocialActions();
 }
 
 
 bool
 Track::loved()
 {
-    return m_trackData->loved();
+    Q_D( Track );
+    return d->trackData->loved();
 }
 
 
 void
 Track::setLoved( bool loved, bool postToInfoSystem )
 {
-    m_trackData->setLoved( loved );
+    Q_D( Track );
+    d->trackData->setLoved( loved );
 
     if ( postToInfoSystem )
     {
@@ -379,7 +509,7 @@ Track::setLoved( bool loved, bool postToInfoSystem )
 
         loveInfo[ "trackinfo" ] = QVariant::fromValue< Tomahawk::InfoSystem::InfoStringHash >( trackInfo );
 
-        Tomahawk::InfoSystem::InfoPushData pushData ( m_trackData->id(),
+        Tomahawk::InfoSystem::InfoPushData pushData ( d->trackData->id(),
                                                     ( loved ? Tomahawk::InfoSystem::InfoLove : Tomahawk::InfoSystem::InfoUnLove ),
                                                     loveInfo,
                                                     Tomahawk::InfoSystem::PushShortUrlFlag );
@@ -464,45 +594,55 @@ Track::socialActionDescription( const QString& action, DescriptionMode mode ) co
 }
 
 
+QList< Tomahawk::SocialAction >
+Track::socialActions( const QString& actionName, const QVariant& value, bool filterDupeSourceNames )
+{
+    Q_D( Track );
+    return d->trackData->socialActions( actionName, value, filterDupeSourceNames );
+}
+
+
 artist_ptr
 Track::artistPtr() const
 {
-    if ( !m_artistPtr )
+    Q_D( const Track );
+    if ( !d->artistPtr )
     {
-        m_artistPtr = Artist::get( artist(), false );
-        connect( m_artistPtr.data(), SIGNAL( updated() ), SIGNAL( updated() ), Qt::UniqueConnection );
-        connect( m_artistPtr.data(), SIGNAL( coverChanged() ), SIGNAL( coverChanged() ), Qt::UniqueConnection );
+        d->artistPtr = Artist::get( artist(), false );
+        connect( d->artistPtr.data(), SIGNAL( updated() ), SIGNAL( updated() ), Qt::UniqueConnection );
+        connect( d->artistPtr.data(), SIGNAL( coverChanged() ), SIGNAL( coverChanged() ), Qt::UniqueConnection );
     }
 
-    return m_artistPtr;
+    return d->artistPtr;
 }
 
 
 album_ptr
 Track::albumPtr() const
 {
-    if ( !m_albumPtr )
+    Q_D( const Track );
+    if ( !d->albumPtr )
     {
-        m_albumPtr = Album::get( artistPtr(), album(), false );
-        connect( m_albumPtr.data(), SIGNAL( updated() ), SIGNAL( updated() ), Qt::UniqueConnection );
-        connect( m_albumPtr.data(), SIGNAL( coverChanged() ), SIGNAL( coverChanged() ), Qt::UniqueConnection );
+        d->albumPtr = Album::get( artistPtr(), album(), false );
+        connect( d->albumPtr.data(), SIGNAL( updated() ), SIGNAL( updated() ), Qt::UniqueConnection );
+        connect( d->albumPtr.data(), SIGNAL( coverChanged() ), SIGNAL( coverChanged() ), Qt::UniqueConnection );
     }
 
-    return m_albumPtr;
+    return d->albumPtr;
 }
 
 
 artist_ptr
 Track::composerPtr() const
 {
-    if ( !m_composerPtr )
-        m_composerPtr = Artist::get( composer(), false );
+    Q_D( const Track );
+    if ( !d->composerPtr )
+        d->composerPtr = Artist::get( composer(), false );
 
-    return m_composerPtr;
+    return d->composerPtr;
 }
 
 
-#ifndef ENABLE_HEADLESS
 QPixmap
 Track::cover( const QSize& size, bool forceLoad ) const
 {
@@ -522,76 +662,124 @@ Track::cover( const QSize& size, bool forceLoad ) const
 bool
 Track::coverLoaded() const
 {
-    if ( m_albumPtr.isNull() )
+    Q_D( const Track );
+    if ( d->albumPtr.isNull() )
         return false;
 
-    if ( m_albumPtr->coverLoaded() && !m_albumPtr->cover( QSize( 0, 0 ) ).isNull() )
+    if ( d->albumPtr->coverLoaded() && !d->albumPtr->cover( QSize( 0, 0 ) ).isNull() )
         return true;
 
-    return m_artistPtr->coverLoaded();
+    return d->artistPtr->coverLoaded();
 }
-
-#endif
 
 
 QList<Tomahawk::query_ptr>
 Track::similarTracks() const
 {
-    return m_trackData->similarTracks();
+    Q_D( const Track );
+    return d->trackData->similarTracks();
 }
 
 
 QStringList
 Track::lyrics() const
 {
-    return m_trackData->lyrics();
+    Q_D( const Track );
+    return d->trackData->lyrics();
 }
 
 
 QString
 Track::artist() const
 {
-    return m_trackData->artist();
+    Q_D( const Track );
+    return d->trackData->artist();
 }
 
 
 QString
 Track::track() const
 {
-    return m_trackData->track();
+    Q_D( const Track );
+    return d->trackData->track();
+}
+
+
+QString
+Track::composer() const
+{
+    Q_D( const Track );
+    return d->composer;
+}
+
+
+QString
+Track::album() const
+{
+    Q_D( const Track );
+    return d->album;
+}
+
+
+int
+Track::duration() const
+{
+    Q_D( const Track );
+    return d->duration;
 }
 
 
 QVariantMap
 Track::attributes() const
 {
-    return m_trackData->attributes();
+    Q_D( const Track );
+    return d->trackData->attributes();
 }
 
 
 int
 Track::year() const
 {
-    return m_trackData->year();
+    Q_D( const Track );
+    return d->trackData->year();
+}
+
+
+unsigned int
+Track::albumpos() const
+{
+    Q_D( const Track );
+    return d->albumpos;
+}
+
+
+unsigned int
+Track::discnumber() const
+{
+    Q_D( const Track );
+    return d->discnumber;
 }
 
 
 void
 Track::share( const Tomahawk::source_ptr& source )
 {
-    m_trackData->share( source );
+    Q_D( Track );
+    d->trackData->share( source );
 }
 
 
-QString
+const QString&
 Track::artistSortname() const
 {
-    return m_trackData->artistSortname();
+    Q_D( const Track );
+    return d->trackData->artistSortname();
 }
 
 
-QString
+const QString&
 Track::trackSortname() const
 {
-    return m_trackData->trackSortname();
+    Q_D( const Track );
+    return d->trackData->trackSortname();
 }

@@ -32,11 +32,10 @@
 #include "accounts/lastfm/LastFmAccount.h"
 #include "Source.h"
 #include "TomahawkSettings.h"
+#include "utils/NetworkAccessManager.h"
 
 #include <lastfm/ws.h>
 #include <lastfm/XmlQuery.h>
-
-#include <qjson/parser.h>
 
 using namespace Tomahawk::Accounts;
 using namespace Tomahawk::InfoSystem;
@@ -64,14 +63,14 @@ LastFmInfoPlugin::init()
     lastfm::ws::ApiKey = "7194b85b6d1f424fe1668173a78c0c4a";
     lastfm::ws::SharedSecret = "ba80f1df6d27ae63e9cb1d33ccf2052f";
     lastfm::ws::Username = m_account.data()->username();
-    lastfm::setNetworkAccessManager( TomahawkUtils::nam() );
+    lastfm::setNetworkAccessManager( Tomahawk::Utils::nam() );
 
     m_pw = m_account.data()->password();
 
     //HACK work around a bug in liblastfm---it doesn't create its config dir, so when it
     // tries to write the track cache, it fails silently. until we have a fixed version, do this
     // code taken from Amarok (src/services/lastfm/ScrobblerAdapter.cpp)
-#ifdef Q_WS_X11
+#ifdef Q_OS_LINUX
     QString lpath = QDir::home().filePath( ".local/share/Last.fm" );
     QDir ldir = QDir( lpath );
     if( !ldir.exists() )
@@ -88,7 +87,7 @@ LastFmInfoPlugin::init()
 
 LastFmInfoPlugin::~LastFmInfoPlugin()
 {
-    qDebug() << Q_FUNC_INFO;
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO;
     delete m_scrobbler;
     m_scrobbler = 0;
 }
@@ -411,7 +410,7 @@ LastFmInfoPlugin::fetchAlbumInfo( Tomahawk::InfoSystem::InfoRequestData requestD
 void
 LastFmInfoPlugin::notInCacheSlot( QHash<QString, QString> criteria, Tomahawk::InfoSystem::InfoRequestData requestData )
 {
-    if ( !TomahawkUtils::nam() )
+    if ( !Tomahawk::Utils::nam() )
     {
         tLog() << "Have a null QNAM, uh oh";
         emit info( requestData, QVariant() );
@@ -761,7 +760,7 @@ LastFmInfoPlugin::artistInfoReturned()
             imgurl = artist.imageUrl( lastfm::AbstractType::LargeImage );
 
         QNetworkRequest req( imgurl );
-        QNetworkReply* newReply = TomahawkUtils::nam()->get( req );
+        QNetworkReply* newReply = Tomahawk::Utils::nam()->get( req );
         newReply->setProperty( "requestData", reply->property( "requestData" ) );
         connect( newReply, SIGNAL( finished() ), SLOT( coverArtReturned() ) );
     }
@@ -786,7 +785,7 @@ LastFmInfoPlugin::albumInfoReturned()
                 imgurl = QUrl( lfm["album"]["image size=large"].text() );
 
             QNetworkRequest req( imgurl );
-            QNetworkReply* newReply = TomahawkUtils::nam()->get( req );
+            QNetworkReply* newReply = Tomahawk::Utils::nam()->get( req );
             newReply->setProperty( "requestData", reply->property( "requestData" ) );
             connect( newReply, SIGNAL( finished() ), SLOT( coverArtReturned() ) );
         }
@@ -833,7 +832,7 @@ LastFmInfoPlugin::coverArtReturned()
     {
         // Follow HTTP redirect
         QNetworkRequest req( redir );
-        QNetworkReply* newReply = TomahawkUtils::nam()->get( req );
+        QNetworkReply* newReply = Tomahawk::Utils::nam()->get( req );
         newReply->setProperty( "requestData", reply->property( "requestData" ) );
         connect( newReply, SIGNAL( finished() ), SLOT( coverArtReturned() ) );
     }
@@ -877,7 +876,7 @@ LastFmInfoPlugin::artistImagesReturned()
     }
     else
     {
-        if ( !TomahawkUtils::nam() )
+        if ( !Tomahawk::Utils::nam() )
         {
             tLog() << Q_FUNC_INFO << "Uh oh, nam is null";
             emit info( reply->property( "requestData" ).value< Tomahawk::InfoSystem::InfoRequestData >(), QVariant() );
@@ -885,7 +884,7 @@ LastFmInfoPlugin::artistImagesReturned()
         }
         // Follow HTTP redirect
         QNetworkRequest req( redir );
-        QNetworkReply* newReply = TomahawkUtils::nam()->get( req );
+        QNetworkReply* newReply = Tomahawk::Utils::nam()->get( req );
         newReply->setProperty( "requestData", reply->property( "requestData" ) );
         connect( newReply, SIGNAL( finished() ), SLOT( artistImagesReturned() ) );
     }
@@ -915,7 +914,7 @@ LastFmInfoPlugin::settingsChanged()
     else if ( m_account.data()->username() != lastfm::ws::Username ||
         m_account.data()->password() != m_pw )
     {
-        qDebug() << "Last.fm credentials changed, re-creating scrobbler";
+        tDebug() << Q_FUNC_INFO << "Last.fm credentials changed, re-creating scrobbler";
         lastfm::ws::Username = m_account.data()->username();
         m_pw = m_account.data()->password();
         // credentials have changed, have to re-create scrobbler for them to take effect
@@ -963,7 +962,7 @@ LastFmInfoPlugin::onAuthenticated()
         else
             error += ".";
 
-        tLog() << error.simplified();
+        tLog() << Q_FUNC_INFO << error.simplified();
     }
 
     authJob->deleteLater();
@@ -978,7 +977,7 @@ LastFmInfoPlugin::createScrobbler()
 
     if ( m_account.data()->sessionKey().isEmpty() ) // no session key, so get one
     {
-        qDebug() << "LastFmInfoPlugin::createScrobbler Session key is empty";
+        tLog() << Q_FUNC_INFO << "Session key is empty";
         QString authToken = TomahawkUtils::md5( ( lastfm::ws::Username.toLower() + TomahawkUtils::md5( m_pw.toUtf8() ) ).toUtf8() );
 
         QMap<QString, QString> query;
@@ -991,7 +990,7 @@ LastFmInfoPlugin::createScrobbler()
     }
     else
     {
-        qDebug() << "LastFmInfoPlugin::createScrobbler Already have session key";
+        tLog() << Q_FUNC_INFO << "LastFmInfoPlugin::createScrobbler Already have session key";
         lastfm::ws::SessionKey = m_account.data()->sessionKey();
 
         m_scrobbler = new lastfm::Audioscrobbler( "thk" );
@@ -1014,7 +1013,7 @@ LastFmInfoPlugin::parseTrackList( QNetworkReply* reply )
     }
     catch ( lastfm::ws::ParseError& e )
     {
-        qWarning() << e.message();
+        tLog() << Q_FUNC_INFO << e.message();
     }
 
     return tracks;

@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2012       Leo Franchi            <lfranchi@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -21,16 +21,22 @@
 #include "ui_SearchWidget.h"
 
 #include "SourceList.h"
+#include "MetaPlaylistInterface.h"
 #include "ViewManager.h"
+#include "audio/AudioEngine.h"
+#include "playlist/ContextView.h"
 #include "playlist/PlayableModel.h"
 #include "playlist/PlaylistModel.h"
 #include "utils/AnimatedSpinner.h"
 #include "utils/TomahawkStyle.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/Logger.h"
+#include "widgets/BasicHeader.h"
 
 #include <QPushButton>
 #include <QScrollArea>
+
+using namespace Tomahawk;
 
 
 SearchWidget::SearchWidget( const QString& search, QWidget* parent )
@@ -39,88 +45,82 @@ SearchWidget::SearchWidget( const QString& search, QWidget* parent )
     , m_search( search )
 {
     QWidget* widget = new QWidget;
+    BasicHeader* headerWidget = new BasicHeader;
     ui->setupUi( widget );
 
-    ui->lineAbove->setStyleSheet( QString( "QFrame { border: 1px solid black; }" ) );
-    ui->lineBelow->setStyleSheet( QString( "QFrame { border: 1px solid %1; }" ).arg( TomahawkStyle::HEADER_BACKGROUND.name() ) );
-
     {
-        ui->resultsView->setGuid( "searchwidget" );
-        m_resultsModel = new PlaylistModel( ui->resultsView );
+        ui->artists->setAutoResize( true );
+        ui->artists->setAutoFitItems( false );
+        ui->artists->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+        ui->artists->setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+        ui->artists->setWrapping( false );
+        ui->artists->setItemSize( QSize( 140, 140 + 32 ) );
+        ui->artists->setFixedHeight( 140 + 32 + 32 );
 
-        QPalette p = ui->resultsView->palette();
-        p.setColor( QPalette::Text, TomahawkStyle::PAGE_TRACKLIST_TRACK_SOLVED );
-        p.setColor( QPalette::BrightText, TomahawkStyle::PAGE_TRACKLIST_TRACK_UNRESOLVED );
-        p.setColor( QPalette::Foreground, TomahawkStyle::PAGE_TRACKLIST_NUMBER );
-        p.setColor( QPalette::Highlight, TomahawkStyle::PAGE_TRACKLIST_HIGHLIGHT );
-        p.setColor( QPalette::HighlightedText, TomahawkStyle::PAGE_TRACKLIST_HIGHLIGHT_TEXT );
+        m_artistsModel = new PlayableModel( ui->artists );
+        ui->artists->setPlayableModel( m_artistsModel );
+        ui->artists->proxyModel()->sort( -1 );
+        ui->artists->setEmptyTip( tr( "Sorry, we could not find any artists!" ) );
 
-        ui->resultsView->setPalette( p );
-        ui->resultsView->setFrameShape( QFrame::Panel );
-        ui->resultsView->setAttribute( Qt::WA_MacShowFocusRect, 0 );
-        ui->resultsView->setStyleSheet( "QTreeView { background-color: transparent; }" );
-        TomahawkStyle::stylePageFrame( ui->resultsFrame );
-
-        ui->resultsView->setAlternatingRowColors( false );
-        ui->resultsView->setAutoResize( true );
-        ui->resultsView->setPlaylistModel( m_resultsModel );
-        ui->resultsView->sortByColumn( PlaylistModel::Score, Qt::DescendingOrder );
-        ui->resultsView->setEmptyTip( tr( "Sorry, we could not find any tracks!" ) );
-    }
-
-    {
-        m_albumsModel = new PlayableModel( ui->albumView );
-        ui->albumView->setPlayableModel( m_albumsModel );
-
-        ui->albumView->setFrameShape( QFrame::NoFrame );
-        ui->albumView->setAttribute( Qt::WA_MacShowFocusRect, 0 );
-        ui->albumView->proxyModel()->sort( -1 );
-        ui->albumView->proxyModel()->setHideDupeItems( true );
-
-        ui->albumView->setAutoResize( true );
-        ui->albumView->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
-        ui->albumView->setStyleSheet( "QListView { background-color: transparent; }" );
-        TomahawkStyle::stylePageFrame( ui->albumFrame );
-    }
-
-    {
-        m_artistsModel = new PlayableModel( ui->artistView );
-        ui->artistView->setPlayableModel( m_artistsModel );
-
-        ui->artistView->setFrameShape( QFrame::NoFrame );
-        ui->artistView->setAttribute( Qt::WA_MacShowFocusRect, 0 );
-        ui->artistView->proxyModel()->sort( -1 );
-        ui->artistView->proxyModel()->setHideDupeItems( true );
-
-        ui->artistView->setAutoResize( true );
-        ui->artistView->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
-        ui->artistView->setStyleSheet( "QListView { background-color: transparent; }" );
+        TomahawkStyle::stylePageFrame( ui->artists );
         TomahawkStyle::stylePageFrame( ui->artistFrame );
+        TomahawkStyle::styleScrollBar( ui->artists->verticalScrollBar() );
     }
 
     {
-        QFont f = ui->label->font();
-        f.setFamily( "Fauna One" );
+        ui->albums->setAutoResize( true );
+        ui->albums->setAutoFitItems( false );
+        ui->albums->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+        ui->albums->setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+        ui->albums->setWrapping( false );
+        ui->albums->setItemSize( QSize( 140, 140 + 56 ) );
+//        ui->albums->proxyModel()->setHideDupeItems( true );
+        ui->albums->setFixedHeight( 140 + 56 + 32 );
 
-        QPalette p = ui->label->palette();
-        p.setColor( QPalette::Foreground, TomahawkStyle::PAGE_CAPTION );
+        m_albumsModel = new PlayableModel( ui->albums );
+        ui->albums->setPlayableModel( m_albumsModel );
+        ui->albums->proxyModel()->sort( -1 );
+        ui->albums->setEmptyTip( tr( "Sorry, we could not find any albums!" ) );
 
-        ui->label->setFont( f );
-        ui->label->setPalette( p );
+        ui->albums->setStyleSheet( QString( "QListView { background-color: white; }" ) );
+        TomahawkStyle::stylePageFrame( ui->albumFrame );
+        TomahawkStyle::styleScrollBar( ui->albums->verticalScrollBar() );
+        TomahawkStyle::styleScrollBar( ui->albums->horizontalScrollBar() );
     }
 
     {
-        QFont f = ui->label_2->font();
-        f.setFamily( "Fauna One" );
+        ui->tracks->setAutoResize( true );
+        ui->tracks->setAutoFitItems( false );
+        ui->tracks->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+        ui->tracks->setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+        ui->tracks->setWrapping( false );
+        ui->tracks->setItemSize( QSize( 140, 140 + 56 ) );
+//        ui->tracks->proxyModel()->setHideDupeItems( true );
+        ui->tracks->setFixedHeight( 140 + 56 + 32 );
 
-        QPalette p = ui->label_2->palette();
-        p.setColor( QPalette::Foreground, TomahawkStyle::HEADER_TEXT );
+        m_resultsModel = new PlayableModel( ui->tracks );
+        ui->tracks->setPlayableModel( m_resultsModel );
+        ui->tracks->proxyModel()->sort( -1 );
+        ui->tracks->setEmptyTip( tr( "Sorry, we could not find any songs!" ) );
 
-        ui->label_2->setFont( f );
-        ui->label_3->setFont( f );
-        ui->label_2->setPalette( p );
-        ui->label_3->setPalette( p );
+        ui->tracks->setStyleSheet( QString( "QListView { background-color: white; }" ) );
+        TomahawkStyle::stylePageFrame( ui->trackFrame );
     }
+
+    {
+        QFont f = ui->topHitsMoreLabel->font();
+        f.setWeight( QFont::Light );
+        f.setPointSize( TomahawkUtils::defaultFontSize() + 1 );
+        ui->topHitsMoreLabel->setFont( f );
+        ui->artistsMoreLabel->setFont( f );
+        ui->albumsMoreLabel->setFont( f );
+
+        connect( ui->artistsMoreLabel, SIGNAL( clicked() ), SLOT( onArtistsMoreClicked() ) );
+        connect( ui->albumsMoreLabel, SIGNAL( clicked() ), SLOT( onAlbumsMoreClicked() ) );
+        connect( ui->topHitsMoreLabel, SIGNAL( clicked() ), SLOT( onTopHitsMoreClicked() ) );
+    }
+
+    m_stackedWidget = new QStackedWidget();
 
     {
         QScrollArea* area = new QScrollArea();
@@ -129,28 +129,102 @@ SearchWidget::SearchWidget( const QString& search, QWidget* parent )
         area->setWidget( widget );
 
         QPalette pal = palette();
-        pal.setBrush( backgroundRole(), TomahawkStyle::HEADER_BACKGROUND );
+        pal.setBrush( backgroundRole(), Qt::white );
         area->setPalette( pal );
         area->setAutoFillBackground( true );
         area->setFrameShape( QFrame::NoFrame );
         area->setAttribute( Qt::WA_MacShowFocusRect, 0 );
 
+        m_stackedWidget->addWidget( area );
+    }
+    {
+        ContextView* topHitsFullView = new ContextView( m_stackedWidget );
+        topHitsFullView->setCaption( tr( "Songs" ) );
+        topHitsFullView->setShowCloseButton( true );
+        topHitsFullView->setPlayableModel( m_resultsModel );
+        m_stackedWidget->addWidget( topHitsFullView );
+
+        connect( topHitsFullView, SIGNAL( closeClicked() ), SLOT( onTopHitsMoreClosed() ) );
+    }
+    {
+        GridView* artistsFullView = new GridView();
+        artistsFullView->setPlayableModel( m_artistsModel );
+
+        CaptionLabel* captionLabel = new CaptionLabel( this );
+        captionLabel->setText( tr( "Artists" ) );
+        captionLabel->setShowCloseButton( true );
+
+        QWidget* vbox = new QWidget;
+        QPalette pal = vbox->palette();
+        pal.setBrush( vbox->backgroundRole(), Qt::white );
+        vbox->setPalette( pal );
+        vbox->setAutoFillBackground( true );
+
+        QVBoxLayout* vboxl = new QVBoxLayout;
+        TomahawkUtils::unmarginLayout( vboxl );
+        vboxl->setContentsMargins( 32, 32, 32, 32 );
+        vboxl->setSpacing( 8 );
+        vbox->setLayout( vboxl );
+
+        vboxl->addWidget( captionLabel );
+        vboxl->addWidget( artistsFullView );
+        vboxl->addStretch();
+        vboxl->setStretchFactor( artistsFullView, 1 );
+
+        m_stackedWidget->addWidget( vbox );
+
+        connect( captionLabel, SIGNAL( clicked() ), SLOT( onTopHitsMoreClosed() ) );
+    }
+    {
+        GridView* albumsFullView = new GridView( m_stackedWidget );
+        albumsFullView->setPlayableModel( m_albumsModel );
+
+        CaptionLabel* captionLabel = new CaptionLabel( this );
+        captionLabel->setText( tr( "Albums" ) );
+        captionLabel->setShowCloseButton( true );
+
+        QWidget* vbox = new QWidget;
+        QPalette pal = vbox->palette();
+        pal.setBrush( vbox->backgroundRole(), Qt::white );
+        vbox->setPalette( pal );
+        vbox->setAutoFillBackground( true );
+
+        QVBoxLayout* vboxl = new QVBoxLayout;
+        TomahawkUtils::unmarginLayout( vboxl );
+        vboxl->setContentsMargins( 32, 32, 32, 32 );
+        vboxl->setSpacing( 8 );
+        vbox->setLayout( vboxl );
+
+        vboxl->addWidget( captionLabel );
+        vboxl->addWidget( albumsFullView );
+        vboxl->addStretch();
+        vboxl->setStretchFactor( albumsFullView, 1 );
+
+        m_stackedWidget->addWidget( vbox );
+
+        connect( captionLabel, SIGNAL( clicked() ), SLOT( onTopHitsMoreClosed() ) );
+    }
+
+    {
         QVBoxLayout* layout = new QVBoxLayout();
-        layout->addWidget( area );
+        layout->addWidget( headerWidget );
+        layout->addWidget( m_stackedWidget );
         setLayout( layout );
         TomahawkUtils::unmarginLayout( layout );
     }
 
-    {
-        QPalette pal = palette();
-        pal.setBrush( backgroundRole(), TomahawkStyle::PAGE_BACKGROUND );
-        ui->resultsContainer->setPalette( pal );
-        ui->resultsContainer->setAutoFillBackground( true );
-    }
+    MetaPlaylistInterface* mpl = new MetaPlaylistInterface();
+    mpl->addChildInterface( ui->artists->playlistInterface() );
+    mpl->addChildInterface( ui->tracks->playlistInterface() );
+    mpl->addChildInterface( ui->albums->playlistInterface() );
+    m_plInterface = playlistinterface_ptr( mpl );
+
+    headerWidget->setCaption( title() );
 
     m_artistsModel->startLoading();
     m_albumsModel->startLoading();
     m_resultsModel->startLoading();
+
     m_queries << Tomahawk::Query::get( search, uuid() );
 
     foreach ( const Tomahawk::query_ptr& query, m_queries )
@@ -160,6 +234,8 @@ SearchWidget::SearchWidget( const QString& search, QWidget* parent )
         connect( query.data(), SIGNAL( resultsAdded( QList<Tomahawk::result_ptr> ) ), SLOT( onResultsFound( QList<Tomahawk::result_ptr> ) ) );
         connect( query.data(), SIGNAL( resolvingFinished( bool ) ), SLOT( onQueryFinished() ) );
     }
+
+    TomahawkUtils::fixMargins( this );
 }
 
 
@@ -190,22 +266,35 @@ SearchWidget::changeEvent( QEvent* e )
 Tomahawk::playlistinterface_ptr
 SearchWidget::playlistInterface() const
 {
-    return ui->resultsView->playlistInterface();
+    return m_plInterface;
 }
 
 
 bool
 SearchWidget::jumpToCurrentTrack()
 {
-    return ui->resultsView->jumpToCurrentTrack();
+    if ( ui->albums && ui->albums->jumpToCurrentTrack() )
+        return true;
+
+    if ( ui->artists && ui->artists->jumpToCurrentTrack() )
+        return true;
+
+    if ( ui->tracks && ui->tracks->jumpToCurrentTrack() )
+        return true;
+
+    return false;
 }
 
 
 void
 SearchWidget::onResultsFound( const QList<Tomahawk::result_ptr>& results )
 {
+    tDebug() << Q_FUNC_INFO;
+
     QList<Tomahawk::artist_ptr> artists;
     QList<Tomahawk::album_ptr> albums;
+    QList<Tomahawk::query_ptr> queries;
+
     foreach( const Tomahawk::result_ptr& result, results )
     {
         if ( !result->collection().isNull() && !result->isOnline() )
@@ -214,13 +303,53 @@ SearchWidget::onResultsFound( const QList<Tomahawk::result_ptr>& results )
         QList< Tomahawk::result_ptr > rl;
         rl << result;
 
-        Tomahawk::query_ptr q = result->toQuery();
-        q->addResults( rl );
+        Tomahawk::query_ptr query = result->toQuery();
+        query->disallowReresolve();
 
-        m_resultsModel->appendQuery( q );
+        bool found = false;
+        foreach ( const Tomahawk::query_ptr& q, m_results.keys() )
+        {
+            if ( q->equals( query, true, true ) )
+            {
+                found = true;
+                q->addResults( rl );
+                break;
+            }
+        }
+
+        if ( !found )
+        {
+            m_results.insert( query, result->score() );
+            queries << query;
+        }
 
         artists << result->track()->artistPtr();
         albums << result->track()->albumPtr();
+    }
+
+    while ( queries.count() )
+    {
+        query_ptr q = queries.takeFirst();
+
+        bool done = false;
+        for ( int i = 0; i < m_resultsModel->rowCount( QModelIndex() ); i++ )
+        {
+            PlayableItem* item = m_resultsModel->itemFromIndex( m_resultsModel->index( i, 0, QModelIndex() ) );
+            if ( item && item->query() )
+            {
+                if ( item->query()->results().first()->score() < q->results().first()->score() )
+                {
+                    m_resultsModel->insertQuery( q, i );
+                    done = true;
+                    break;
+                }
+            }
+        }
+
+        if ( !done )
+        {
+            m_resultsModel->appendQuery( q );
+        }
     }
 
     onArtistsFound( artists );
@@ -231,8 +360,13 @@ SearchWidget::onResultsFound( const QList<Tomahawk::result_ptr>& results )
 void
 SearchWidget::onAlbumsFound( const QList<Tomahawk::album_ptr>& albums )
 {
+    tDebug() << Q_FUNC_INFO;
+
     foreach ( const Tomahawk::album_ptr& album, albums )
     {
+        if ( m_albums.contains( album ) )
+            continue;
+
         int distance = TomahawkUtils::levenshtein( m_search, album->name() );
         int maxlen = qMax( m_search.length(), album->name().length() );
         float score = (float)( maxlen - distance ) / maxlen;
@@ -240,19 +374,24 @@ SearchWidget::onAlbumsFound( const QList<Tomahawk::album_ptr>& albums )
         if ( score <= 0.1 )
             continue;
 
-        m_albums.insert( score, album );
+        m_albums.insert( album, score );
 //        tDebug() << Q_FUNC_INFO << "found album:" << album->name() << "score:" << score;
     }
 
-    updateAlbums();
+//    updateAlbums();
 }
 
 
 void
 SearchWidget::onArtistsFound( const QList<Tomahawk::artist_ptr>& artists )
 {
+    tDebug() << Q_FUNC_INFO;
+
     foreach ( const Tomahawk::artist_ptr& artist, artists )
     {
+        if ( m_artists.contains( artist ) )
+            continue;
+
         int distance = TomahawkUtils::levenshtein( m_search, artist->name() );
         int maxlen = qMax( m_search.length(), artist->name().length() );
         float score = (float)( maxlen - distance ) / maxlen;
@@ -260,17 +399,22 @@ SearchWidget::onArtistsFound( const QList<Tomahawk::artist_ptr>& artists )
         if ( score <= 0.1 )
             continue;
 
-        m_artists.insert( score, artist );
+        m_artists.insert( artist, score );
 //        tDebug() << Q_FUNC_INFO << "found artist:" << artist->name() << "score:" << score;
     }
 
-    updateArtists();
+//    updateArtists();
 }
 
 
 void
 SearchWidget::onQueryFinished()
 {
+    tDebug() << Q_FUNC_INFO;
+
+    updateArtists();
+    updateAlbums();
+
     m_artistsModel->finishLoading();
     m_albumsModel->finishLoading();
     m_resultsModel->finishLoading();
@@ -280,13 +424,26 @@ SearchWidget::onQueryFinished()
 void
 SearchWidget::updateArtists()
 {
+    tDebug() << Q_FUNC_INFO;
+
     QList< Tomahawk::artist_ptr > sortedArtists;
-    QList< float > floats = m_artists.keys();
+    QList< artist_ptr > artists = m_artists.keys();
+    QList< float > floats = m_artists.values();
+
     qSort( floats.begin(), floats.end() );
 
-    for ( int i = floats.count() - 1; i >= 0; i-- )
+    while ( floats.count() > 0 )
     {
-        sortedArtists << m_artists.value( floats.at( i ) );
+        float f = floats.takeLast();
+        foreach ( const artist_ptr& a, artists )
+        {
+            if ( m_artists.value( a ) == f )
+            {
+                artists.removeAll( a );
+                sortedArtists << a;
+                break;
+            }
+        }
     }
 
     m_artistsModel->clear();
@@ -297,13 +454,26 @@ SearchWidget::updateArtists()
 void
 SearchWidget::updateAlbums()
 {
+    tDebug() << Q_FUNC_INFO;
+
     QList< Tomahawk::album_ptr > sortedAlbums;
-    QList< float > floats = m_albums.keys();
+    QList< album_ptr > albums = m_albums.keys();
+    QList< float > floats = m_albums.values();
+
     qSort( floats.begin(), floats.end() );
 
-    for ( int i = floats.count() - 1; i >= 0; i-- )
+    while ( floats.count() > 0 )
     {
-        sortedAlbums << m_albums.value( floats.at( i ) );
+        float f = floats.takeLast();
+        foreach ( const album_ptr& a, albums )
+        {
+            if ( m_albums.value( a ) == f )
+            {
+                albums.removeAll( a );
+                sortedAlbums << a;
+                break;
+            }
+        }
     }
 
     m_albumsModel->clear();
@@ -315,4 +485,54 @@ QPixmap
 SearchWidget::pixmap() const
 {
     return TomahawkUtils::defaultPixmap( TomahawkUtils::Search );
+}
+
+
+bool
+SearchWidget::isBeingPlayed() const
+{
+    if ( ui->albums && ui->albums->isBeingPlayed() )
+        return true;
+
+    if ( ui->artists && ui->artists->isBeingPlayed() )
+        return true;
+
+    if ( ui->albums && ui->albums->playlistInterface() == AudioEngine::instance()->currentTrackPlaylist() )
+        return true;
+
+    if ( ui->artists && ui->artists->playlistInterface() == AudioEngine::instance()->currentTrackPlaylist() )
+        return true;
+
+    if ( ui->tracks && ui->tracks->playlistInterface() == AudioEngine::instance()->currentTrackPlaylist() )
+        return true;
+
+    return false;
+}
+
+
+void
+SearchWidget::onTopHitsMoreClicked()
+{
+    m_stackedWidget->setCurrentIndex( 1 );
+}
+
+
+void
+SearchWidget::onArtistsMoreClicked()
+{
+    m_stackedWidget->setCurrentIndex( 2 );
+}
+
+
+void
+SearchWidget::onAlbumsMoreClicked()
+{
+    m_stackedWidget->setCurrentIndex( 3 );
+}
+
+
+void
+SearchWidget::onTopHitsMoreClosed()
+{
+    m_stackedWidget->setCurrentIndex( 0 );
 }

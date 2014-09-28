@@ -47,9 +47,22 @@ ImageRegistry::icon( const QString& image, TomahawkUtils::ImageMode mode )
 }
 
 
-QPixmap
-ImageRegistry::pixmap( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode )
+qint64
+ImageRegistry::cacheKey( const QSize& size, float opacity, QColor tint )
 {
+    return size.width() * 100 + size.height() * 10 + ( opacity * 100.0 ) + tint.value();
+}
+
+
+QPixmap
+ImageRegistry::pixmap( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode, float opacity, QColor tint )
+{
+    if ( size.width() < 0 || size.height() < 0 )
+    {
+        Q_ASSERT( false );
+        return QPixmap();
+    }
+
     QHash< qint64, QPixmap > subsubcache;
     QHash< int, QHash< qint64, QPixmap > > subcache;
 
@@ -61,9 +74,10 @@ ImageRegistry::pixmap( const QString& image, const QSize& size, TomahawkUtils::I
         {
             subsubcache = subcache.value( mode );
 
-            if ( subsubcache.contains( size.width() * size.height() ) )
+            const qint64 ck = cacheKey( size, opacity, tint );
+            if ( subsubcache.contains( ck ) )
             {
-                return subsubcache.value( size.width() * size.height() );
+                return subsubcache.value( ck );
             }
         }
     }
@@ -77,7 +91,12 @@ ImageRegistry::pixmap( const QString& image, const QSize& size, TomahawkUtils::I
         p.fill( Qt::transparent );
 
         QPainter pixPainter( &p );
+        pixPainter.setOpacity( opacity );
         svgRenderer.render( &pixPainter );
+        pixPainter.end();
+
+        if ( tint.alpha() > 0 )
+            p = TomahawkUtils::tinted( p, tint );
 
         pixmap = p;
     }
@@ -99,7 +118,7 @@ ImageRegistry::pixmap( const QString& image, const QSize& size, TomahawkUtils::I
         if ( !size.isNull() && pixmap.size() != size )
             pixmap = pixmap.scaled( size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation );
 
-        putInCache( image, size, mode, pixmap );
+        putInCache( image, size, mode, opacity, pixmap, tint );
     }
 
     return pixmap;
@@ -107,7 +126,7 @@ ImageRegistry::pixmap( const QString& image, const QSize& size, TomahawkUtils::I
 
 
 void
-ImageRegistry::putInCache( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode, const QPixmap& pixmap )
+ImageRegistry::putInCache( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode, float opacity, const QPixmap& pixmap, QColor tint )
 {
     tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Adding to image cache:" << image << size << mode;
 
@@ -129,7 +148,7 @@ ImageRegistry::putInCache( const QString& image, const QSize& size, TomahawkUtil
         }
     }
 
-    subsubcache.insert( size.width() * size.height(), pixmap );
+    subsubcache.insert( cacheKey( size, opacity, tint ), pixmap );
     subcache.insert( mode, subsubcache );
     s_cache.insert( image, subcache );
 }

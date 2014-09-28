@@ -18,16 +18,10 @@ set( libGuiSources
     DropJob.cpp
     GlobalActionManager.cpp
     ViewPage.cpp
+    ViewPageLazyLoader.cpp
+    ViewPagePlugin.cpp
     ViewManager.cpp
     LatchManager.cpp
-    TomahawkSettingsGui.cpp
-
-    context/ContextPage.cpp
-    context/ContextWidget.cpp
-    context/pages/TopTracksContext.cpp
-    context/pages/RelatedArtistsContext.cpp
-    context/pages/WikipediaContext.cpp
-    context/pages/WebContext.cpp
 
     jobview/JobStatusView.cpp
     jobview/JobStatusModel.cpp
@@ -46,7 +40,7 @@ set( libGuiSources
     playlist/InboxModel.cpp
     playlist/InboxView.cpp
     playlist/FlexibleHeader.cpp
-    playlist/ModeHeader.cpp
+    playlist/ContextView.cpp
     playlist/FlexibleView.cpp
     playlist/FlexibleTreeView.cpp
     playlist/TreeModel.cpp
@@ -72,14 +66,16 @@ set( libGuiSources
     playlist/TreeWidget.cpp
     playlist/ViewHeader.cpp
     playlist/LovedTracksModel.cpp
+    playlist/RecentlyLovedTracksModel.cpp
+    playlist/TopLovedTracksModel.cpp
     playlist/RecentlyAddedModel.cpp
     playlist/RecentlyPlayedModel.cpp
     playlist/AlbumItemDelegate.cpp
-    playlist/PlaylistLargeItemDelegate.cpp
-    playlist/PlaylistChartItemDelegate.cpp
+    playlist/TrackItemDelegate.cpp
     playlist/PlayableItem.cpp
     playlist/SingleTrackPlaylistInterface.cpp
     playlist/RevisionQueueItem.cpp
+    playlist/TrackDetailView.cpp
 
     playlist/dynamic/DynamicPlaylist.cpp
     playlist/dynamic/DynamicView.cpp
@@ -101,6 +97,7 @@ set( libGuiSources
     resolvers/JSResolverHelper.cpp
     resolvers/ScriptEngine.cpp
 
+    utils/DpiScaler.cpp
     utils/ImageRegistry.cpp
     utils/WidgetDragFilter.cpp
     utils/XspfGenerator.cpp
@@ -109,9 +106,7 @@ set( libGuiSources
     utils/M3uLoader.cpp
     utils/ItunesParser.cpp
     utils/ItunesLoader.cpp
-    utils/RdioParser.cpp
     utils/ShortenedLinkParser.cpp
-    utils/ExfmParser.cpp
     utils/TomahawkStyle.cpp
     utils/DropJobNotifier.cpp
     utils/ProxyStyle.cpp
@@ -125,38 +120,45 @@ set( libGuiSources
     utils/SharedTimeLine.cpp
     utils/ResultUrlChecker.cpp
     utils/NetworkReply.cpp
+    utils/NetworkProxyFactory.cpp
+    utils/NetworkAccessManager.cpp
+    utils/ShortLinkHelper.cpp
 
     widgets/AnimatedCounterLabel.cpp
+    widgets/AnimatedSplitter.cpp
     widgets/BasicHeader.cpp
-    widgets/FilterHeader.cpp
-    widgets/ScriptCollectionHeader.cpp
+    widgets/HoverControls.cpp
+    widgets/BackgroundWidget.cpp
     widgets/Breadcrumb.cpp
     widgets/BreadcrumbButton.cpp
-    widgets/CheckDirTree.cpp
-    widgets/QueryLabel.cpp
-    widgets/ImageButton.cpp
-    widgets/StatsGauge.cpp
-    widgets/AnimatedSplitter.cpp
-    widgets/ElidedLabel.cpp
-    widgets/NewPlaylistWidget.cpp
-    widgets/SearchWidget.cpp
-    widgets/SeekSlider.cpp
-    widgets/PlaylistTypeSelectorDialog.cpp
-    widgets/HistoryWidget.cpp
-    widgets/WhatsHotWidget.cpp
-    widgets/NewReleasesWidget.cpp
     widgets/ChartDataLoader.cpp
-    widgets/RecentlyPlayedPlaylistsModel.cpp
-    widgets/RecentPlaylistsModel.cpp
+    widgets/CheckDirTree.cpp
+    widgets/ClickableLabel.cpp
+    widgets/ComboBox.cpp
+    widgets/ElidedLabel.cpp
+    widgets/FadingPixmap.cpp
+    widgets/FilterHeader.cpp
+    widgets/CaptionLabel.cpp
+    widgets/HeaderLabel.cpp
+    widgets/HistoryWidget.cpp
+    widgets/ImageButton.cpp
+    widgets/NewPlaylistWidget.cpp
+    widgets/NewReleasesWidget.cpp
     widgets/OverlayButton.cpp
     widgets/OverlayWidget.cpp
-    widgets/HeaderLabel.cpp
-    widgets/HeaderWidget.cpp
-    widgets/ComboBox.cpp
-    widgets/ToggleButton.cpp
-    widgets/FadingPixmap.cpp
     widgets/PlayableCover.cpp
+    widgets/PlaylistsModel.cpp
+    widgets/PlaylistTypeSelectorDialog.cpp
+    widgets/QueryLabel.cpp
+    widgets/RecentPlaylistsModel.cpp
+    widgets/RecentlyPlayedPlaylistsModel.cpp
+    widgets/ScriptCollectionHeader.cpp
+    widgets/ScrollingLabel.cpp
+    widgets/SearchWidget.cpp
+    widgets/SeekSlider.cpp
     widgets/SourceTreePopupDialog.cpp
+    widgets/StatsGauge.cpp
+    widgets/ToggleButton.cpp
     widgets/infowidgets/SourceInfoWidget.cpp
     widgets/infowidgets/ArtistInfoWidget.cpp
     widgets/infowidgets/AlbumInfoWidget.cpp
@@ -184,7 +186,6 @@ list(APPEND libSources
     SourceList.cpp
     Pipeline.cpp
 
-    AclRegistry.cpp
     Artist.cpp
     ArtistPlaylistInterface.cpp
     Album.cpp
@@ -202,6 +203,7 @@ list(APPEND libSources
     TrackData.cpp
     SourcePlaylistInterface.cpp
     PlaylistInterface.cpp
+    UrlHandler.cpp
 
     EchonestCatalogSynchronizer.cpp
 
@@ -216,6 +218,8 @@ list(APPEND libSources
     accounts/AccountFactoryWrapper.cpp
     accounts/AccountFactoryWrapperDelegate.cpp
     accounts/AccountConfigWidget.cpp
+    accounts/ConfigStorage.cpp
+    accounts/LocalConfigStorage.cpp
 
     accounts/spotify/SpotifyAccount.cpp
     accounts/spotify/SpotifyAccountConfig.cpp
@@ -230,67 +234,70 @@ list(APPEND libSources
     collection/TracksRequest.cpp
 
     database/Database.cpp
-    database/FuzzyIndex.cpp
+    database/fuzzyindex/FuzzyIndex.cpp
+    database/fuzzyindex/DatabaseFuzzyIndex.cpp
     database/DatabaseCollection.cpp
     database/LocalCollection.cpp
     database/DatabaseWorker.cpp
     database/DatabaseImpl.cpp
     database/DatabaseResolver.cpp
     database/DatabaseCommand.cpp
-    database/DatabaseCommandLoggable.cpp
-    database/DatabaseCommand_Resolve.cpp
-    database/DatabaseCommand_AllArtists.cpp
-    database/DatabaseCommand_AllAlbums.cpp
-    database/DatabaseCommand_AllTracks.cpp
+    database/DatabaseCommand_AddClientAuth.cpp
     database/DatabaseCommand_AddFiles.cpp
+    database/DatabaseCommand_AddSource.cpp
+    database/DatabaseCommand_AllAlbums.cpp
+    database/DatabaseCommand_AllArtists.cpp
+    database/DatabaseCommand_AllTracks.cpp
+    database/DatabaseCommand_ArtistStats.cpp
+    database/DatabaseCommand_CalculatePlaytime.cpp
+    database/DatabaseCommand_ClientAuthValid.cpp
+    database/DatabaseCommand_CollectionAttributes.cpp
+    database/DatabaseCommand_CollectionStats.cpp
+    database/DatabaseCommand_CreateDynamicPlaylist.cpp
+    database/DatabaseCommand_CreatePlaylist.cpp
+    database/DatabaseCommand_DeleteDynamicPlaylist.cpp
     database/DatabaseCommand_DeleteFiles.cpp
+    database/DatabaseCommand_DeleteInboxEntry.cpp
+    database/DatabaseCommand_DeletePlaylist.cpp
     database/DatabaseCommand_DirMtimes.cpp
     database/DatabaseCommand_FileMTimes.cpp
-    database/DatabaseCommand_LoadFiles.cpp
-    database/DatabaseCommand_LogPlayback.cpp
-    database/DatabaseCommand_AddSource.cpp
-    database/DatabaseCommand_SourceOffline.cpp
-    database/DatabaseCommand_CollectionStats.cpp
-    database/DatabaseCommand_TrackStats.cpp
-    database/DatabaseCommand_ArtistStats.cpp
-    database/DatabaseCommand_LoadPlaylistEntries.cpp
-    database/DatabaseCommand_LoadInboxEntries.cpp
-    database/DatabaseCommand_ModifyPlaylist.cpp
-    database/DatabaseCommand_PlaybackHistory.cpp
-    database/DatabaseCommand_SetPlaylistRevision.cpp
+    database/DatabaseCommand_GenericSelect.cpp
+    database/DatabaseCommand_LoadAllAutoPlaylists.cpp
     database/DatabaseCommand_LoadAllPlaylists.cpp
     database/DatabaseCommand_LoadAllSortedPlaylists.cpp
     database/DatabaseCommand_LoadAllSources.cpp
-    database/DatabaseCommand_CreatePlaylist.cpp
-    database/DatabaseCommand_DeletePlaylist.cpp
-    database/DatabaseCommand_RenamePlaylist.cpp
-    database/DatabaseCommand_LoadOps.cpp
-    database/DatabaseCommand_UpdateSearchIndex.cpp
-    database/DatabaseCommand_SetDynamicPlaylistRevision.cpp
-    database/DatabaseCommand_CreateDynamicPlaylist.cpp
+    database/DatabaseCommand_LoadAllStations.cpp
     database/DatabaseCommand_LoadDynamicPlaylist.cpp
     database/DatabaseCommand_LoadDynamicPlaylistEntries.cpp
-    database/DatabaseCommand_LoadAllAutoPlaylists.cpp
-    database/DatabaseCommand_LoadAllStations.cpp
-    database/DatabaseCommand_DeleteDynamicPlaylist.cpp
-    database/DatabaseCommand_AddClientAuth.cpp
-    database/DatabaseCommand_ClientAuthValid.cpp
-    database/DatabaseCommand_SocialAction.cpp
+    database/DatabaseCommand_LoadFiles.cpp
+    database/DatabaseCommand_LoadInboxEntries.cpp
+    database/DatabaseCommand_LoadOps.cpp
+    database/DatabaseCommand_LoadPlaylistEntries.cpp
     database/DatabaseCommand_LoadSocialActions.cpp
     database/DatabaseCommand_LoadTrackAttributes.cpp
-    database/DatabaseCommand_GenericSelect.cpp
-    database/DatabaseCommand_SetCollectionAttributes.cpp
-    database/DatabaseCommand_CollectionAttributes.cpp
-    database/DatabaseCommand_TrackAttributes.cpp
-    database/DatabaseCommand_SetTrackAttributes.cpp
-    database/DatabaseCommand_PlaybackCharts.cpp
-    database/DatabaseCommand_ShareTrack.cpp
-    database/DatabaseCommand_DeleteInboxEntry.cpp
+    database/DatabaseCommand_LogPlayback.cpp
     database/DatabaseCommand_ModifyInboxEntry.cpp
+    database/DatabaseCommand_ModifyPlaylist.cpp
     database/DatabaseCommand_NetworkCharts.cpp
-    database/Database.cpp
-    database/TomahawkSqlQuery.cpp
+    database/DatabaseCommand_PlaybackCharts.cpp
+    database/DatabaseCommand_PlaybackHistory.cpp
+    database/DatabaseCommand_RenamePlaylist.cpp
+    database/DatabaseCommand_Resolve.cpp
+    database/DatabaseCommand_SetCollectionAttributes.cpp
+    database/DatabaseCommand_SetDynamicPlaylistRevision.cpp
+    database/DatabaseCommand_SetPlaylistRevision.cpp
+    database/DatabaseCommand_SetTrackAttributes.cpp
+    database/DatabaseCommand_ShareTrack.cpp
+    database/DatabaseCommand_SocialAction.cpp
+    database/DatabaseCommand_SourceOffline.cpp
+    database/DatabaseCommand_TrackAttributes.cpp
+    database/DatabaseCommand_TrackStats.cpp
+    database/DatabaseCommand_TrendingArtists.cpp
+    database/DatabaseCommand_TrendingTracks.cpp
+    database/DatabaseCommand_UpdateSearchIndex.cpp
+    database/DatabaseCommandLoggable.cpp
     database/IdThreadWorker.cpp
+    database/TomahawkSqlQuery.cpp
 
     infosystem/InfoSystem.cpp
     infosystem/InfoSystemCache.cpp
@@ -307,6 +314,8 @@ list(APPEND libSources
     filemetadata/taghandlers/oggtag.cpp
     filemetadata/MetadataEditor.cpp
 
+    network/acl/AclRegistry.cpp
+    network/acl/AclRequest.cpp
     network/BufferIoDevice.cpp
     network/Msg.cpp
     network/MsgProcessor.cpp
@@ -322,6 +331,7 @@ list(APPEND libSources
 
     playlist/PlaylistUpdaterInterface.cpp
     playlist/PlaylistTemplate.cpp
+    playlist/XspfPlaylistTemplate.cpp
     playlist/dynamic/DynamicPlaylist.cpp
     playlist/dynamic/GeneratorFactory.cpp
     playlist/dynamic/GeneratorInterface.cpp
@@ -330,7 +340,7 @@ list(APPEND libSources
     playlist/dynamic/database/DatabaseGenerator.cpp
     playlist/dynamic/database/DatabaseControl.cpp
     playlist/dynamic/DynamicControl.cpp
-    
+
     resolvers/ExternalResolver.cpp
     resolvers/Resolver.cpp
     resolvers/ScriptCollection.cpp
@@ -345,6 +355,8 @@ list(APPEND libSources
     sip/PeerInfo.cpp
     sip/SipStatusMessage.cpp
 
+    utils/Cloudstream.cpp
+    utils/Json.cpp
     utils/TomahawkUtils.cpp
     utils/Logger.cpp
     utils/Qnr_IoDeviceStream.cpp
@@ -352,13 +364,11 @@ list(APPEND libSources
     utils/TomahawkCache.cpp
     utils/GuiHelpers.cpp
     utils/WeakObjectHash.cpp
-
-
-    thirdparty/kdsingleapplicationguard/kdsingleapplicationguard.cpp
-    thirdparty/kdsingleapplicationguard/kdsharedmemorylocker.cpp
-    thirdparty/kdsingleapplicationguard/kdtoolsglobal.cpp
-    thirdparty/kdsingleapplicationguard/kdlockedsharedmemorypointer.cpp
+    utils/WeakObjectList.cpp
+    utils/PluginLoader.cpp
 )
+
+add_subdirectory( accounts/configstorage )
 
 IF(LIBLASTFM_FOUND)
     include_directories( ${LIBLASTFM_INCLUDE_DIRS} )
@@ -374,16 +384,14 @@ set( libUI ${libUI}
     widgets/PlaylistTypeSelectorDialog.ui
     widgets/NewPlaylistWidget.ui
     widgets/SearchWidget.ui
-    widgets/WhatsHotWidget.ui
+    widgets/HeaderWidget.ui
     widgets/NewReleasesWidget.ui
     widgets/infowidgets/SourceInfoWidget.ui
     widgets/infowidgets/ArtistInfoWidget.ui
     widgets/infowidgets/AlbumInfoWidget.ui
     widgets/infowidgets/TrackInfoWidget.ui
     playlist/QueueView.ui
-    playlist/ColumnViewPreviewWidget.ui
     filemetadata/MetadataEditor.ui
-    context/ContextWidget.ui
     infobar/InfoBar.ui
     accounts/AccountFactoryWrapper.ui
     accounts/spotify/SpotifyAccountConfig.ui
@@ -397,7 +405,7 @@ include_directories(
     ${QT_INCLUDE_DIR}
     ${QJSON_INCLUDE_DIR}
     ${ECHONEST_INCLUDE_DIR}
-    ${CLUCENE_INCLUDE_DIRS}
+    ${LUCENEPP_INCLUDE_DIRS}
     ${PHONON_INCLUDES}
     ${Boost_INCLUDE_DIR}
 
@@ -413,7 +421,10 @@ ENDIF(QCA2_FOUND)
 IF(LIBATTICA_FOUND)
     SET( libGuiSources ${libGuiSources} AtticaManager.cpp )
     INCLUDE_DIRECTORIES( ${LIBATTICA_INCLUDE_DIR} )
-    LIST(APPEND LINK_LIBRARIES ${LIBATTICA_LIBRARIES} ${QuaZip_LIBRARIES} )
+    LIST(APPEND LINK_LIBRARIES ${LIBATTICA_LIBRARIES} ${LibAttica_LIBRARIES} ${QuaZip_LIBRARIES} )
+    IF( TOMAHAWK_QT5 )
+        LIST(APPEND LINK_LIBRARIES KF5::Attica )
+    ENDIF( TOMAHAWK_QT5 )
 ENDIF(LIBATTICA_FOUND)
 
 IF( WIN32 )
@@ -442,10 +453,21 @@ IF( APPLE )
     SET( libSources ${libSources}
       utils/TomahawkUtils_Mac.mm
       mac/FileHelpers.mm
-      thirdparty/Qocoa/qbutton_mac.mm
-      thirdparty/Qocoa/qsearchfield_mac.mm
-      thirdparty/Qocoa/qtoolbartabdialog_mac.mm
       widgets/SourceTreePopupDialog_mac.mm )
+
+    if( BUILD_WITH_QT4 )
+        list(APPEND libSources
+            thirdparty/Qocoa/qbutton_mac.mm
+            thirdparty/Qocoa/qsearchfield_mac.mm
+            thirdparty/Qocoa/qtoolbartabdialog_mac.mm
+        )
+    else()
+        list(APPEND libSources
+            thirdparty/Qocoa/qbutton.cpp
+            thirdparty/Qocoa/qsearchfield.cpp
+            thirdparty/Qocoa/qtoolbartabdialog.cpp
+        )
+    endif()
 
     SET_SOURCE_FILES_PROPERTIES(utils/TomahawkUtils_Mac.mm PROPERTIES COMPILE_FLAGS "-fvisibility=default")
 
@@ -490,11 +512,14 @@ IF(QCA2_FOUND)
 ENDIF(QCA2_FOUND)
 
 IF( UNIX AND NOT APPLE )
-    LIST(APPEND LINK_LIBRARIES ${QT_QTDBUS_LIBRARY} )
+    LIST(APPEND LINK_LIBRARIES ${QT_QTDBUS_LIBRARIES} )
+    qt5_use_modules(tomahawklib DBus)
 ENDIF( UNIX AND NOT APPLE )
 
 TARGET_LINK_LIBRARIES( tomahawklib
     LINK_PRIVATE
+    ${PHONON_LIBRARY}
+
     # Thirdparty shipped with tomahawk
     ${LIBPORTFWD_LIBRARIES}
     ${QTKEYCHAIN_LIBRARIES}
@@ -502,9 +527,8 @@ TARGET_LINK_LIBRARIES( tomahawklib
     LINK_PUBLIC
     # External deps
     ${QJSON_LIBRARIES}
-    ${PHONON_LIBS}
     ${TAGLIB_LIBRARIES}
-    ${CLUCENE_LIBRARIES}
+    ${LUCENEPP_LIBRARIES}
     ${ECHONEST_LIBRARIES}
     ${QT_QTSQL_LIBRARY}
     ${QT_QTUITOOLS_LIBRARY}

@@ -57,7 +57,7 @@ public slots:
     void disconnectPlugin();
     void checkSettings() {}
     void configurationChanged() {}
-    void addContact( const QString &, const QString& ) {}
+    bool addContact( const QString&, AddContactOptions, const QString& ) { return false; }
     void sendMsg( const QString&, const SipInfo& ) {}
     void webSocketConnected();
     void webSocketDisconnected();
@@ -65,7 +65,6 @@ public slots:
 signals:
     void connectWebSocket() const;
     void disconnectWebSocket() const;
-    void authUrlDiscovered( Tomahawk::Accounts::HatchetAccount::Service service, const QString& authUrl ) const;
     void rawBytes( QByteArray bytes ) const;
 
 private slots:

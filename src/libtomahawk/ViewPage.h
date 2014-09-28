@@ -66,9 +66,32 @@ public:
     virtual QString filter() const { return m_filter; }
     virtual bool setFilter( const QString& filter );
 
+    virtual bool willAcceptDrag( const QMimeData* data ) const;
+    virtual bool dropMimeData( const QMimeData*, Qt::DropAction );
+
     virtual bool jumpToCurrentTrack() = 0;
 
     virtual bool isTemporaryPage() const { return false; }
+
+    /**
+     * Should we add a row in the SourceTreeView for this page.
+     */
+    virtual bool addPageItem() const;
+
+    /**
+     * This page is actually a constant page that will be shown on every
+     * restart of Tomahawk until the user selects it to be removed.
+     *
+     * The main distinction between this and isTemporaryPage() is that the
+     * page will not be listed in the search history.
+     */
+    virtual bool isDeletable() const { return false; }
+
+    /**
+     * The ViewPage item in the SourcesModel was deleted.
+     */
+    virtual void onItemDeleted();
+
     virtual bool isBeingPlayed() const { return false; }
 
     virtual QList<PlaylistUpdaterInterface*> updaters() const { return QList<PlaylistUpdaterInterface*>(); }
@@ -89,6 +112,8 @@ private:
     QString m_filter;
 };
 
-}; // ns
+} // ns
+
+Q_DECLARE_METATYPE( Tomahawk::ViewPage* )
 
 #endif //VIEWPAGE_H

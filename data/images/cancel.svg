@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg width="72px" height="72px" viewBox="0 0 72 72" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
-    <title>cancel</title>
+<svg width="60px" height="60px" viewBox="0 0 60 60" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <title>Slice 1</title>
     <description>Created with Sketch (http://www.bohemiancoding.com/sketch)</description>
-    <defs>
-        <linearGradient x1="50%" y1="0%" x2="50%" y2="173.920641%" id="linearGradient-1">
-            <stop stop-color="rgb(123,125,121)" offset="0%"></stop>
-            <stop stop-color="rgb(0,0,0)" offset="100%"></stop>
-        </linearGradient>
-    </defs>
-    <g id="Page 1" fill="rgb(215,215,215)" fill-rule="evenodd">
-        <path d="M36.0006494,5 C19.4588542,5 6,18.4575567 6,34.9993506 C6,51.5411446 19.4588529,65 36.0006494,65 C52.5424458,65 66,51.5411471 66,34.9993506 C66,18.4575542 52.5424817,5 36.0006494,5 L36.0006494,5 L36.0006494,5 M36.0006494,59.4371165 C30.6479766,59.4371165 25.6960729,57.7017454 21.6650312,54.7718478 L55.4775297,20.2615692 C58.5851148,24.3626478 60.435918,29.467596 60.435918,34.9992532 C60.4372204,48.4738244 49.4751158,59.4371165 36.0006494,59.4371165 L36.0006494,59.4371165 L36.0006494,59.4371165 M36.0006494,10.5615996 C41.6620053,10.5615996 46.8733072,12.5018949 51.0210775,15.744367 L17.0555343,50.4128779 C13.6249988,46.2041493 11.5640833,40.8385064 11.5640833,34.9981654 C11.5628117,21.5236251 22.5275287,10.5615996 36.0006494,10.5615996 C36.0006494,10.5615996 22.5275287,10.5615996 36.0006494,10.5615996 L36.0006494,10.5615996" id="Shape" fill="url(#linearGradient-1)"></path>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="cancel" sketch:type="MSLayerGroup">
+            <g id="Page-1" sketch:type="MSShapeGroup">
+                <g id="cancel">
+                    <g id="Page-1">
+                        <path d="M17.5,42.5 L45,14" id="Line" stroke="#000000" stroke-width="10" stroke-linecap="square"></path>
+                        <path d="M0,29.9993506 C0,46.5411446 13.4588529,60 30.0006494,60 C46.5424458,60 60,46.5411471 60,29.9993506 C60,13.4575542 46.5424817,0 30.0006494,0 C13.4588542,0 0,13.4575567 0,29.9993506 Z M30,50 C41.0456955,50 50,41.0456955 50,30 C50,18.9543045 41.0456955,10 30,10 C18.9543045,10 10,18.9543045 10,30 C10,41.0456955 18.9543045,50 30,50 Z" id="Oval-1" fill="#000000"></path>
+                    </g>
+                </g>
+            </g>
+        </g>
     </g>
 </svg>

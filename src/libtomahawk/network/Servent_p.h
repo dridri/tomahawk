@@ -25,10 +25,7 @@
 #include "Servent.h"
 
 #include <QMutex>
-
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
-#include <qjson/qobjecthelper.h>
+#include <QStringList>
 
 #include <boost/function.hpp>
 
@@ -48,15 +45,14 @@ public:
     Q_DECLARE_PUBLIC ( Servent )
 
 private:
-    QMap< QString, IODeviceFactoryFunc > iofactories;
     QMap< QString, QPointer< Connection > > offers;
     QMap< QString, QPair< Tomahawk::peerinfo_ptr, QString > > lazyoffers;
     QStringList connectedNodes;
-    QJson::Parser parser;
 
     /**
      * canonical list of authed peers
      */
+    QMutex controlconnectionsMutex;
     QList< ControlConnection* > controlconnections;
 
     /**
@@ -73,6 +69,14 @@ private:
      * All available external IPs
      */
     QList<QHostAddress> externalAddresses;
+
+    /**
+     * Do we listen to all external addresses.
+     *
+     * If true, we will always reiterate over the current adresses known to Qt
+     * instead of returning a static list for the local SipInfos.
+     */
+    bool externalListenAll;
 
     /**
      * Either the static set or the UPnP set external host

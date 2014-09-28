@@ -18,20 +18,22 @@
 
 #include "Result.h"
 
-#include "Album.h"
 #include "collection/Collection.h"
-#include "resolvers/Resolver.h"
-#include "Source.h"
-#include "Pipeline.h"
 #include "database/Database.h"
 #include "database/DatabaseCommand_Resolve.h"
 #include "database/DatabaseCommand_AllTracks.h"
 #include "database/DatabaseCommand_AddFiles.h"
 #include "filemetadata/MetadataEditor.h"
-
+#include "resolvers/ExternalResolverGui.h"
+#include "resolvers/Resolver.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/Logger.h"
-#include "resolvers/ExternalResolverGui.h"
+
+#include "Album.h"
+#include "Pipeline.h"
+#include "PlaylistInterface.h"
+#include "Source.h"
+#include "Track.h"
 
 using namespace Tomahawk;
 
@@ -279,11 +281,14 @@ Result::onOffline()
 
 
 void
-Result::setCollection( const Tomahawk::collection_ptr& collection )
+Result::setCollection( const Tomahawk::collection_ptr& collection , bool emitOnlineEvents )
 {
     m_collection = collection;
-    connect( m_collection->source().data(), SIGNAL( online() ), SLOT( onOnline() ), Qt::QueuedConnection );
-    connect( m_collection->source().data(), SIGNAL( offline() ), SLOT( onOffline() ), Qt::QueuedConnection );
+    if ( emitOnlineEvents )
+    {
+        connect( m_collection->source().data(), SIGNAL( online() ), SLOT( onOnline() ), Qt::QueuedConnection );
+        connect( m_collection->source().data(), SIGNAL( offline() ), SLOT( onOffline() ), Qt::QueuedConnection );
+    }
 }
 
 void
@@ -417,11 +422,7 @@ Result::sourceIcon( TomahawkUtils::ImageMode style, const QSize& desiredSize ) c
     }
     else
     {
-        QPixmap avatar = collection()->source()->avatar( TomahawkUtils::RoundedCorners, desiredSize );
-        if ( !avatar )
-        {
-            avatar = TomahawkUtils::defaultPixmap( TomahawkUtils::DefaultSourceAvatar, TomahawkUtils::RoundedCorners, desiredSize );
-        }
+        QPixmap avatar = collection()->source()->avatar( TomahawkUtils::RoundedCorners, desiredSize, true );
         return avatar;
     }
 }
@@ -462,13 +463,10 @@ Result::setFileId( unsigned int id )
 }
 
 
-Tomahawk::Resolver*
+QPointer<Tomahawk::Resolver>
 Result::resolvedBy() const
 {
-    if ( m_resolvedBy.isNull() )
-        return 0;
-
-    return m_resolvedBy.data();
+    return m_resolvedBy;
 }
 
 

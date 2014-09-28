@@ -4,6 +4,7 @@
  *   Copyright (C) 2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright (C) 2011-2012, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright (C) 2013, Uwe L. Korn <uwelk@xhochy.com>
+ *   Copyright (C) 2013, Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -22,9 +23,14 @@
 
 #include "GlobalActionManager.h"
 
+#include "accounts/AccountManager.h"
+#include "accounts/spotify/SpotifyAccount.h"
+#include "accounts/ResolverAccount.h"
 #include "audio/AudioEngine.h"
 #include "database/LocalCollection.h"
-#include "echonest/Playlist.h"
+#include "jobview/ErrorStatusMessage.h"
+#include "jobview/JobStatusModel.h"
+#include "jobview/JobStatusView.h"
 #include "playlist/dynamic/GeneratorInterface.h"
 #include "playlist/PlaylistTemplate.h"
 #include "playlist/PlaylistView.h"
@@ -32,8 +38,9 @@
 #include "resolvers/ScriptCommand_LookupUrl.h"
 #include "utils/JspfLoader.h"
 #include "utils/Logger.h"
-#include "utils/RdioParser.h"
+#include "utils/NetworkAccessManager.h"
 #include "utils/ShortenedLinkParser.h"
+#include "utils/ShortLinkHelper.h"
 #include "utils/SpotifyParser.h"
 #include "utils/TomahawkUtils.h"
 #include "utils/XspfLoader.h"
@@ -48,17 +55,10 @@
 #include "TomahawkSettings.h"
 #include "ViewManager.h"
 
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
-
 #include <QApplication>
 #include <QClipboard>
-#include <QMimeData>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkConfiguration>
-#include <QNetworkProxy>
-#include <QUrl>
+
+#include <echonest/Playlist.h>
 
 
 GlobalActionManager* GlobalActionManager::s_instance = 0;
@@ -142,26 +142,57 @@ GlobalActionManager::openLink( const QString& title, const QString& artist, cons
 }
 
 
+
 void
-GlobalActionManager::shortenLink( const QUrl& url, const QVariant& callbackObj )
+GlobalActionManager::installResolverFromFile( const QString& resolverPath )
 {
-    tDebug() << Q_FUNC_INFO << "callbackObj is valid: " << ( callbackObj.isValid() ? "true" : "false" );
-    if ( QThread::currentThread() != thread() )
+    const QFileInfo resolverAbsoluteFilePath( resolverPath );
+    TomahawkSettings::instance()->setScriptDefaultPath( resolverAbsoluteFilePath.absolutePath() );
+
+    if ( resolverAbsoluteFilePath.baseName() == "spotify_tomahawkresolver" )
     {
-        qDebug() << "Reinvoking in correct thread:" << Q_FUNC_INFO;
-        QMetaObject::invokeMethod( this, "shortenLink", Qt::QueuedConnection, Q_ARG( QUrl, url ), Q_ARG( QVariant, callbackObj ) );
+        // HACK if this is a spotify resolver, we treat it specially.
+        // usually we expect the user to just download the spotify resolver from attica,
+        // however developers, those who build their own tomahawk, can't do that, or linux
+        // users can't do that. However, we have an already-existing SpotifyAccount that we
+        // know exists that we need to use this resolver path.
+        //
+        // Hence, we special-case the spotify resolver and directly set the path on it here.
+        Accounts::SpotifyAccount* acct = 0;
+        foreach ( Accounts::Account* account, Accounts::AccountManager::instance()->accounts() )
+        {
+            if ( Accounts::SpotifyAccount* spotify = qobject_cast< Accounts::SpotifyAccount* >( account ) )
+            {
+                acct = spotify;
+                break;
+            }
+        }
+
+        if ( acct )
+        {
+            acct->setManualResolverPath( resolverPath );
+            return;
+        }
+    }
+
+    Accounts::Account* acct =
+        Accounts::AccountManager::instance()->accountFromPath( resolverPath );
+
+    if ( !acct )
+    {
+        QFileInfo fi( resolverPath );
+
+        JobStatusView::instance()->model()->addJob( new ErrorStatusMessage(
+                                tr( "Resolver installation from file %1 failed." )
+                                .arg( fi.fileName() ) ) );
+
+        tDebug() << "Resolver was not installed:" << resolverPath;
         return;
     }
 
-    QNetworkRequest request;
-    request.setUrl( url );
-
-    qDebug() << "Doing lookup:" << url.toEncoded();
-    QNetworkReply *reply = TomahawkUtils::nam()->get( request );
-    if ( callbackObj.isValid() )
-        reply->setProperty( "callbackobj", callbackObj );
-    connect( reply, SIGNAL( finished() ), SLOT( shortenLinkRequestFinished() ) );
-    connect( reply, SIGNAL( error( QNetworkReply::NetworkError ) ), SLOT( shortenLinkRequestError( QNetworkReply::NetworkError ) ) );
+    Accounts::AccountManager::instance()->addAccount( acct );
+    TomahawkSettings::instance()->addAccount( acct->accountId() );
+    Accounts::AccountManager::instance()->enableAccount( acct );
 }
 
 
@@ -173,8 +204,6 @@ GlobalActionManager::openUrl( const QString& url )
         return parseTomahawkLink( url );
     else if ( url.contains( "open.spotify.com" ) || url.startsWith( "spotify:" ) )
         return openSpotifyLink( url );
-    else if ( url.contains( "www.rdio.com" ) )
-        return openRdioLink( url );
 
     // Can we parse the Url using a ScriptResolver?
     bool canParse = false;
@@ -201,54 +230,6 @@ GlobalActionManager::openUrl( const QString& url )
     }
 
     return false;
-}
-
-
-#ifndef ENABLE_HEADLESS
-
-void
-GlobalActionManager::getShortLink( const playlist_ptr& pl )
-{
-    QVariantMap m;
-    m[ "title" ] = pl->title();
-    m[ "creator" ] = pl->author().isNull() ? "" : pl->author()->friendlyName();
-    QVariantList tracks;
-    foreach( const plentry_ptr& pl, pl->entries() )
-    {
-        if ( pl->query().isNull() )
-            continue;
-
-        QVariantMap track;
-        track[ "title" ] = pl->query()->track()->track();
-        track[ "creator" ] = pl->query()->track()->artist();
-        track[ "album" ] = pl->query()->track()->album();
-
-        tracks << track;
-    }
-    m[ "track" ] = tracks;
-
-    QVariantMap jspf;
-    jspf["playlist"] = m;
-
-    QJson::Serializer s;
-    QByteArray msg = s.serialize( jspf );
-
-    // No built-in Qt facilities for doing a FORM POST. So we build the payload ourselves...
-    const QByteArray boundary = "----------------------------2434992cccab";
-    QByteArray data( QByteArray( "--" + boundary + "\r\n" ) );
-    data += "Content-Disposition: form-data; name=\"data\"; filename=\"playlist.jspf\"\r\n";
-    data += "Content-Type: application/octet-stream\r\n\r\n";
-    data += msg;
-    data += "\r\n\r\n";
-    data += "--" + boundary + "--\r\n\r\n";
-
-    const QUrl url( QString( "%1/p/").arg( hostname() ) );
-    QNetworkRequest req( url );
-    req.setHeader( QNetworkRequest::ContentTypeHeader, QString( "multipart/form-data; boundary=%1" ).arg( QString::fromLatin1( boundary ) ) );
-    QNetworkReply *reply = TomahawkUtils::nam()->post( req, data );
-
-    connect( reply, SIGNAL( finished() ), SLOT( postShortenFinished() ) );
-    connect( reply, SIGNAL( error( QNetworkReply::NetworkError ) ), SLOT( shortenLinkRequestError( QNetworkReply::NetworkError ) ) );
 }
 
 
@@ -336,7 +317,13 @@ void
 GlobalActionManager::copyToClipboard( const query_ptr& query )
 {
     m_clipboardLongUrl = openLinkFromQuery( query );
-    shortenLink( m_clipboardLongUrl );
+    Tomahawk::Utils::ShortLinkHelper* slh = new Tomahawk::Utils::ShortLinkHelper();
+    connect( slh, SIGNAL( shortLinkReady( QUrl, QUrl, QVariant ) ),
+             SLOT( copyToClipboardReady( QUrl, QUrl, QVariant ) ) );
+    connect( slh, SIGNAL( done() ),
+             slh, SLOT( deleteLater() ),
+             Qt::QueuedConnection );
+    slh->shortenLink( m_clipboardLongUrl );
 }
 
 
@@ -426,6 +413,10 @@ GlobalActionManager::parseTomahawkLink( const QString& urlIn )
         else if ( cmdType == "import" )
         {
             return handleImportCommand( u );
+        }
+        else if ( cmdType == "love" )
+        {
+            return handleLoveCommand( u );
         }
         else
         {
@@ -593,11 +584,43 @@ GlobalActionManager::handleOpenCommand( const QUrl& url )
 }
 
 
+bool
+GlobalActionManager::handleLoveCommand( const QUrl& url )
+{
+    QStringList parts = url.path().split( "/" ).mid( 1 ); // get the rest of the command
+    if ( parts.isEmpty() )
+    {
+        tLog() << "No specific love command:" << url.toString();
+        return false;
+    }
+
+    QPair< QString, QString > pair;
+    QString title, artist, album;
+    foreach ( pair, urlQueryItems( url ) )
+    {
+        if ( pair.first == "title" )
+            title = pair.second;
+        else if ( pair.first == "artist" )
+            artist = pair.second;
+        else if ( pair.first == "album" )
+            album = pair.second;
+    }
+
+    track_ptr t = Track::get( artist, title, album );
+    if ( t.isNull() )
+        return false;
+
+    t->setLoved( true );
+
+    return true;
+}
+
+
 void
 GlobalActionManager::handleOpenTrack( const query_ptr& q )
 {
-    ViewManager::instance()->queue()->model()->appendQuery( q );
-    ViewManager::instance()->showQueue();
+    ViewManager::instance()->queue()->trackView()->model()->appendQuery( q );
+    ViewManager::instance()->showQueuePage();
 
     if ( !AudioEngine::instance()->isPlaying() && !AudioEngine::instance()->isPaused() )
     {
@@ -613,8 +636,8 @@ GlobalActionManager::handleOpenTracks( const QList< query_ptr >& queries )
     if ( queries.isEmpty() )
         return;
 
-    ViewManager::instance()->queue()->model()->appendQueries( queries );
-    ViewManager::instance()->showQueue();
+    ViewManager::instance()->queue()->trackView()->model()->appendQueries( queries );
+    ViewManager::instance()->showQueuePage();
 
     if ( !AudioEngine::instance()->isPlaying() && !AudioEngine::instance()->isPaused() )
     {
@@ -699,6 +722,22 @@ GlobalActionManager::informationForUrl(const QString& url, const QSharedPointer<
 }
 
 
+void
+GlobalActionManager::copyToClipboardReady( const QUrl& longUrl, const QUrl& shortUrl, const QVariant& )
+{
+    // Copy resulting url to clipboard
+    if ( m_clipboardLongUrl == longUrl )
+    {
+        QClipboard* cb = QApplication::clipboard();
+
+        QByteArray data = TomahawkUtils::percentEncode( shortUrl.isEmpty() ? longUrl : shortUrl );
+        cb->setText( data );
+
+        m_clipboardLongUrl.clear();
+    }
+}
+
+
 bool
 GlobalActionManager::handleQueueCommand( const QUrl& url )
 {
@@ -729,8 +768,6 @@ GlobalActionManager::doQueueAdd( const QStringList& parts, const QList< QPair< Q
     if ( parts.size() && parts[ 0 ] == "track" )
     {
         if ( queueSpotify( parts, queryItems ) )
-            return true;
-        else if ( queueRdio( parts, queryItems ) )
             return true;
 
         QPair< QString, QString > pair;
@@ -782,7 +819,14 @@ GlobalActionManager::doQueueAdd( const QStringList& parts, const QList< QPair< Q
                 else
                 { // give it a web result hint
                     QFileInfo info( track.path() );
-                    query_ptr q = Query::get( QString(), info.baseName(), QString(), uuid(), false );
+
+                    QString artistText = track.host();
+                    if ( artistText.isEmpty() )
+                        artistText = info.absolutePath();
+                    if ( artistText.isEmpty() )
+                        artistText = track.toString();
+
+                    query_ptr q = Query::get( artistText, info.baseName(), QString(), uuid(), false );
 
                     if ( q.isNull() )
                         continue;
@@ -790,12 +834,10 @@ GlobalActionManager::doQueueAdd( const QStringList& parts, const QList< QPair< Q
                     q->setResultHint( track.toString() );
                     q->setSaveHTTPResultHint( true );
 
-
-                    q->setResultHint( track.toString() );
                     Pipeline::instance()->resolve( q );
 
-                    ViewManager::instance()->queue()->model()->appendQuery( q );
-                    ViewManager::instance()->showQueue();
+                    ViewManager::instance()->queue()->trackView()->model()->appendQuery( q );
+                    ViewManager::instance()->showQueuePage();
                 }
                 return true;
             }
@@ -860,29 +902,6 @@ GlobalActionManager::queueSpotify( const QStringList& , const QList< QPair< QStr
         return false;
 
     openSpotifyLink( url );
-
-    return true;
-}
-
-
-bool
-GlobalActionManager::queueRdio( const QStringList& , const QList< QPair< QString, QString > >& queryItems )
-{
-    QString url;
-
-    QPair< QString, QString > pair;
-    foreach ( pair, queryItems )
-    {
-        if ( pair.first == "rdioURL" )
-            url = pair.second;
-        else if ( pair.first == "rdioURI" )
-            url = pair.second;
-    }
-
-    if ( url.isEmpty() )
-        return false;
-
-    openRdioLink( url );
 
     return true;
 }
@@ -1193,8 +1212,6 @@ GlobalActionManager::handlePlayCommand( const QUrl& url )
     {
         if ( playSpotify( url ) )
             return true;
-        else if ( playRdio( url ) )
-            return true;
 
         QPair< QString, QString > pair;
         QString title, artist, album, urlStr;
@@ -1263,124 +1280,6 @@ GlobalActionManager::playOrQueueNow( const query_ptr& q )
 }
 
 
-bool
-GlobalActionManager::playRdio( const QUrl& url )
-{
-    if ( !urlHasQueryItem( url, "rdioURI" ) && !urlHasQueryItem( url, "rdioURL" ) )
-        return false;
-
-    QString rdioUrl = urlHasQueryItem( url, "rdioURI" ) ? urlQueryItemValue( url, "spotifyURI" ) : urlQueryItemValue( url, "rdioURL" );
-    RdioParser* p = new RdioParser( this );
-    p->parse( rdioUrl );
-    connect( p, SIGNAL( track( Tomahawk::query_ptr ) ), this, SLOT( playOrQueueNow( Tomahawk::query_ptr ) ) );
-
-    return true;
-}
-
-#endif
-
-
-void
-GlobalActionManager::shortenLinkRequestFinished()
-{
-    qDebug() << Q_FUNC_INFO;
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>( sender() );
-    bool error = false;
-
-    // NOTE: this should never happen
-    if ( !reply )
-    {
-        emit shortLinkReady( QUrl( "" ), QUrl( "" ), QVariantMap() );
-        return;
-    }
-
-    QVariant callbackObj;
-    if ( reply->property( "callbackobj" ).isValid() )
-        callbackObj = reply->property( "callbackobj" );
-
-    // Check for the redirect attribute, as this should be the shortened link
-    QVariant urlVariant = reply->attribute( QNetworkRequest::RedirectionTargetAttribute );
-
-    // NOTE: this should never happen
-    if ( urlVariant.isNull() || !urlVariant.isValid() )
-        error = true;
-
-    QUrl longUrl = reply->request().url();
-    QUrl shortUrl = urlVariant.toUrl();
-
-    // NOTE: this should never happen
-    if ( !shortUrl.isValid() )
-        error = true;
-
-#ifndef ENABLE_HEADLESS
-    // Success!  Here is the short link
-    if ( m_clipboardLongUrl == reply->request().url() )
-    {
-        QClipboard* cb = QApplication::clipboard();
-
-        QByteArray data = percentEncode( error ? longUrl : shortUrl );
-        cb->setText( data );
-
-        m_clipboardLongUrl.clear();
-    }
-    else
-#endif
-    {
-        if ( !error )
-            emit shortLinkReady( longUrl, shortUrl, callbackObj );
-        else
-            emit shortLinkReady( longUrl, longUrl, callbackObj );
-    }
-
-    reply->deleteLater();
-}
-
-
-#ifndef ENABLE_HEADLESS
-
-void
-GlobalActionManager::postShortenFinished()
-{
-    QNetworkReply* reply = qobject_cast<QNetworkReply*>( sender() );
-    Q_ASSERT( reply );
-    const QByteArray raw = reply->readAll();
-
-    const QUrl url = QUrl::fromUserInput( raw );
-    QClipboard* cb = QApplication::clipboard();
-
-    const QByteArray data = percentEncode( url );
-    cb->setText( data );
-
-    reply->deleteLater();
-}
-
-#endif
-
-
-void
-GlobalActionManager::shortenLinkRequestError( QNetworkReply::NetworkError error )
-{
-    tDebug() << Q_FUNC_INFO << "Network Error:" << error;
-
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>( sender() );
-
-    // NOTE: this should never happen
-    if ( !reply )
-    {
-        emit shortLinkReady( QUrl( "" ), QUrl( "" ), QVariantMap() );
-        return;
-    }
-
-    QVariantMap callbackMap;
-    if ( reply->property( "callbackMap" ).canConvert< QVariantMap >() && !reply->property( "callbackMap" ).toMap().isEmpty() )
-        callbackMap = reply->property( "callbackMap" ).toMap();
-    reply->deleteLater();
-    emit shortLinkReady( QUrl( "" ), QUrl( "" ), callbackMap );
-}
-
-
-#ifndef ENABLE_HEADLESS
-
 void
 GlobalActionManager::showPlaylist()
 {
@@ -1412,7 +1311,7 @@ GlobalActionManager::waitingForResolved( bool /* success */ )
                 AudioEngine::instance()->playItem( AudioEngine::instance()->playlist(), m_waitingToPlay->results().first() );
             else
             {
-                ViewManager::instance()->queue()->model()->appendQuery( m_waitingToPlay );
+                ViewManager::instance()->queue()->trackView()->model()->appendQuery( m_waitingToPlay );
                 AudioEngine::instance()->play();
             }
         }
@@ -1436,33 +1335,8 @@ GlobalActionManager::openSpotifyLink( const QString& link )
 }
 
 
-bool
-GlobalActionManager::openRdioLink( const QString& link )
-{
-    RdioParser* rdio = new RdioParser( this );
-    connect( rdio, SIGNAL( track( Tomahawk::query_ptr ) ), this, SLOT( handleOpenTrack( Tomahawk::query_ptr ) ) );
-    rdio->parse( link );
-
-    return true;
-}
-
-#endif
-
-
 QString
 GlobalActionManager::hostname() const
 {
     return QString( "http://toma.hk" );
-}
-
-
-QByteArray
-GlobalActionManager::percentEncode( const QUrl& url ) const
-{
-    QByteArray data = url.toEncoded();
-
-    data.replace( "'", "%27" ); // QUrl doesn't encode ', which it doesn't have to. Some apps don't like ' though, and want %27. Both are valid.
-    data.replace( "%20", "+" );
-
-    return data;
 }

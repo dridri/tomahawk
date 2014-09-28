@@ -62,7 +62,7 @@ QueueProxyModel::onIndexChanged( const QModelIndex& index )
 
 
 void
-QueueProxyModel::onPlaybackStarted( const Tomahawk::result_ptr& result )
+QueueProxyModel::onPlaybackStarted( const Tomahawk::result_ptr result )
 {
     for ( int i = 0; i < rowCount(); i++ )
     {
@@ -72,8 +72,6 @@ QueueProxyModel::onPlaybackStarted( const Tomahawk::result_ptr& result )
                                         item->query()->track()->equals( result->track() ) ) )
         {
             removeIndex( idx );
-            if ( !rowCount() )
-                ViewManager::instance()->hideQueue();
         }
     }
 }
@@ -84,7 +82,4 @@ QueueProxyModel::onIndexActivated( const QModelIndex& index )
 {
     setCurrentIndex( QModelIndex() );
     removeIndex( index );
-
-    if ( !rowCount() )
-        ViewManager::instance()->hideQueue();
 }

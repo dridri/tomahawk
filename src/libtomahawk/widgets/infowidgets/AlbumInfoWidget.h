@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2010-2011, Leo Franchi <lfranchi@kde.org>
  *
@@ -42,6 +42,7 @@
 class PlayableModel;
 class TreeModel;
 class MetaAlbumInfoInterface;
+class BasicHeader;
 
 namespace Ui
 {
@@ -92,14 +93,11 @@ protected:
     void changeEvent( QEvent* e );
 
 private slots:
-    void loadAlbums( bool autoRefetch = false );
-    void gotAlbums( const QList<Tomahawk::album_ptr>& albums );
-
-    void onArtistClicked();
     void onAlbumImageUpdated();
 
 private:
     Ui::AlbumInfoWidget* ui;
+    BasicHeader* m_headerWidget;
 
     Tomahawk::album_ptr m_album;
 

@@ -41,7 +41,7 @@ PlayableProxyModelPlaylistInterface::PlayableProxyModelPlaylistInterface( Playab
     connect( proxyModel, SIGNAL( indexPlayable( QModelIndex ) ), SLOT( onItemsChanged() ) );
     connect( proxyModel, SIGNAL( filterChanged( QString ) ), SLOT( onItemsChanged() ) );
     connect( proxyModel, SIGNAL( itemCountChanged( unsigned int ) ), SLOT( onItemsChanged() ) );
-    connect( proxyModel, SIGNAL( currentIndexChanged() ), SLOT( onCurrentIndexChanged() ) );
+    connect( proxyModel, SIGNAL( currentIndexChanged( QModelIndex, QModelIndex ) ), SLOT( onCurrentIndexChanged() ) );
 }
 
 
@@ -155,8 +155,10 @@ PlayableProxyModelPlaylistInterface::siblingIndex( int itemsAway, qint64 rootInd
             {
                 if ( m_shuffleHistory.count() > 1 )
                 {
-                    if ( proxyModel->itemFromQuery( m_shuffleHistory.at( m_shuffleHistory.count() - 2 ) ) )
-                        idx = proxyModel->mapFromSource( proxyModel->itemFromQuery( m_shuffleHistory.at( m_shuffleHistory.count() - 2 ) )->index );
+                    if ( proxyModel->itemFromQuery( m_shuffleHistory.at( m_shuffleHistory.count() - 2 ) ) ) {
+                        int historyIndex = m_shuffleHistory.count() - 2;
+                        idx = proxyModel->mapFromSource( proxyModel->itemFromQuery( m_shuffleHistory.at( historyIndex ) )->index );
+                    }
                 }
                 else
                     return -1;
@@ -179,9 +181,9 @@ PlayableProxyModelPlaylistInterface::siblingIndex( int itemsAway, qint64 rootInd
                         item = proxyModel->itemFromIndex( proxyModel->mapToSource( idx ) );
                     }
                     while ( safetyCounter < proxyModel->rowCount() &&
-                          ( !item || !item->query()->playable() || m_shuffleHistory.contains( item->query() ) ) );
+                          ( !item || !item->query() || !item->query()->playable() || m_shuffleHistory.contains( item->query() ) ) );
 
-                    if ( item && item->query()->playable() )
+                    if ( item && item->query() && item->query()->playable() )
                     {
                         m_shuffleCache = idx;
                         tDebug( LOGVERBOSE ) << "Next shuffled PlaylistItem cached:" << item->query()->toString() << item->query()->results().at( 0 )->url()
@@ -216,7 +218,7 @@ PlayableProxyModelPlaylistInterface::siblingIndex( int itemsAway, qint64 rootInd
                     idx = proxyModel->mapFromSource( pitem->index );
                 }
 
-                idx = proxyModel->index( idx.row() + itemsAway, 0 );
+                idx = proxyModel->index( idx.row() + itemsAway, 0, idx.parent() );
             }
         }
     }
@@ -244,7 +246,7 @@ PlayableProxyModelPlaylistInterface::siblingIndex( int itemsAway, qint64 rootInd
             return (qint64)( item->index.internalPointer() );
         }
 
-        idx = proxyModel->index( idx.row() + ( itemsAway > 0 ? 1 : -1 ), 0 );
+        idx = proxyModel->index( idx.row() + ( itemsAway > 0 ? 1 : -1 ), 0, idx.parent() );
     }
 
     return -1;
@@ -260,7 +262,7 @@ PlayableProxyModelPlaylistInterface::currentItem() const
     PlayableProxyModel* proxyModel = m_proxyModel.data();
 
     PlayableItem* item = proxyModel->itemFromIndex( proxyModel->mapToSource( proxyModel->currentIndex() ) );
-    if ( item && !item->query().isNull() && item->query()->playable() )
+    if ( item && item->query() && item->query()->playable() )
         return item->query()->results().at( 0 );
 
     return result_ptr();

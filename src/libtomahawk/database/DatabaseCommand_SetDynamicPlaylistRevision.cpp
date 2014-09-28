@@ -22,13 +22,12 @@
 #include "playlist/dynamic/DynamicPlaylist.h"
 #include "playlist/dynamic/DynamicControl.h"
 #include "network/Servent.h"
+#include "utils/Json.h"
 #include "utils/Logger.h"
 
 #include "DatabaseImpl.h"
 #include "Source.h"
 #include "TomahawkSqlQuery.h"
-
-#include <qjson/serializer.h>
 
 #include <QSqlQuery>
 
@@ -82,7 +81,7 @@ DatabaseCommand_SetDynamicPlaylistRevision::controlsV()
     {
         foreach ( const dyncontrol_ptr& control, m_controls )
         {
-            m_controlsV << QJson::QObjectHelper::qobject2qvariant( control.data() );
+            m_controlsV << TomahawkUtils::qobject2qvariant( control.data() );
         }
     }
 
@@ -109,23 +108,21 @@ DatabaseCommand_SetDynamicPlaylistRevision::postCommitHook()
     tLog() << "Postcommitting this playlist:" << playlistguid() << source().isNull();
 
     // private, but we are a friend. will recall itself in its own thread:
-    DynamicPlaylist* rawPl = 0;
     dynplaylist_ptr playlist = source()->dbCollection()->autoPlaylist( playlistguid() );
-    if ( !playlist )
-        playlist = source()->dbCollection()->station( playlistguid() );
-
-    if ( playlist )
-        rawPl = playlist.data();
-    else
+    if ( playlist.isNull() )
     {
-        // if it's neither an auto or station, it must not be auto-loaded, so we MUST have been told about it directly
-        rawPl = m_playlist;
+        playlist = source()->dbCollection()->station( playlistguid() );
     }
 
-    if ( !rawPl )
+    if ( playlist.isNull() && !m_playlist.isNull() )
+    {
+        // if it's neither an auto or station, it must not be auto-loaded, so we MUST have been told about it directly
+        playlist = m_playlist;
+    }
+
+    if ( playlist.isNull() )
     {
         tLog() << "Got null playlist with guid:" << playlistguid() << "from source and collection:" << source()->friendlyName() << source()->dbCollection()->name() << "and mode is static?:" << (m_mode == Static);
-//        Q_ASSERT( false );
         return;
     }
 
@@ -136,13 +133,13 @@ DatabaseCommand_SetDynamicPlaylistRevision::postCommitHook()
             controlMap << v.toMap();
 
         if ( m_mode == OnDemand )
-            rawPl->setRevision(  newrev(),
+            playlist->setRevision(  newrev(),
                                     true, // this *is* the newest revision so far
                                     m_type,
                                     controlMap,
                                     m_applied );
         else
-            rawPl->setRevision(  newrev(),
+            playlist->setRevision(  newrev(),
                                     orderedentriesguids,
                                     m_previous_rev_orderedguids,
                                     m_type,
@@ -154,13 +151,13 @@ DatabaseCommand_SetDynamicPlaylistRevision::postCommitHook()
     else
     {
         if ( m_mode == OnDemand )
-            rawPl->setRevision(  newrev(),
+            playlist->setRevision(  newrev(),
                                     true, // this *is* the newest revision so far
                                     m_type,
                                     m_controls,
                                     m_applied );
         else
-            rawPl->setRevision(  newrev(),
+            playlist->setRevision(  newrev(),
                                     orderedentriesguids,
                                     m_previous_rev_orderedguids,
                                     m_type,
@@ -198,8 +195,7 @@ DatabaseCommand_SetDynamicPlaylistRevision::exec( DatabaseImpl* lib )
         }
     }
 
-    QJson::Serializer ser;
-    const QByteArray newcontrols_data = ser.serialize( newcontrols );
+    const QByteArray newcontrols_data = TomahawkUtils::toJson( newcontrols );
 
     TomahawkSqlQuery query = lib->newquery();
     QString sql = "INSERT INTO dynamic_playlist_revision (guid, controls, plmode, pltype) "
@@ -267,9 +263,9 @@ DatabaseCommand_SetDynamicPlaylistRevision::exec( DatabaseImpl* lib )
 }
 
 void
-DatabaseCommand_SetDynamicPlaylistRevision::setPlaylist( DynamicPlaylist* pl )
+DatabaseCommand_SetDynamicPlaylistRevision::setPlaylist( QWeakPointer<DynamicPlaylist> pl )
 {
-    m_playlist = pl;
+    m_playlist = pl.toStrongRef();
 }
 
 }

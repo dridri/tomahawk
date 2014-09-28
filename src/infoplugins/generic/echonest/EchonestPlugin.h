@@ -24,7 +24,8 @@
 
 #include "infosystem/InfoSystem.h"
 #include "infosystem/InfoSystemWorker.h"
-#include "echonest/Artist.h"
+
+#include <echonest/Artist.h>
 
 #include <QObject>
 

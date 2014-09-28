@@ -51,9 +51,7 @@ public:
     virtual const QString serviceName() const;
     virtual Account::ConnectionState connectionState() const;
     virtual bool isValid() const { return true; }
-#ifndef ENABLE_HEADLESS
     virtual QIcon icon() const;
-#endif
     virtual void checkSettings() {}
     virtual void configurationChanged() {}
 
@@ -65,7 +63,7 @@ public slots:
 
     virtual void sendSipInfos( const Tomahawk::peerinfo_ptr& /* receiver */, const QList<SipInfo>& /* info */ ) {}
     void broadcastMsg( const QString& ) {}
-    void addContact( const QString&, const QString& ) {}
+    bool addContact( const QString&, AddContactOptions, const QString& ) { return false; }
 
 private slots:
     void lanHostFound( const QString& host, int port, const QString& name, const QString& nodeid );

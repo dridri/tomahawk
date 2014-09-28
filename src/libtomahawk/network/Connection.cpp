@@ -20,15 +20,16 @@
 
 #include "Connection_p.h"
 
+#include "network/acl/AclRegistry.h"
+#include "network/acl/AclRequest.h"
 #include "network/Servent.h"
 #include "network/Msg.h"
 #include "utils/Logger.h"
+#include "utils/Json.h"
+#include "utils/TomahawkUtils.h"
 
-#include "AclRegistry.h"
 #include "QTcpSocketExtra.h"
 #include "Source.h"
-
-#include <qjson/serializer.h>
 
 #include <QTime>
 #include <QThread>
@@ -91,8 +92,7 @@ Connection::handleIncomingQueueEmpty()
 void
 Connection::setFirstMessage( const QVariant& m )
 {
-    QJson::Serializer ser;
-    const QByteArray ba = ser.serialize( m );
+    const QByteArray ba = TomahawkUtils::toJson( m );
     //qDebug() << "first msg json len:" << ba.length();
     setFirstMessage( Msg::factory( ba, Msg::JSON ) );
 }
@@ -330,20 +330,23 @@ Connection::checkACL()
     {
         tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Not checking ACL, nodeid is empty";
         QTimer::singleShot( 0, this, SLOT( doSetup() ) );
+        emit authSuccessful();
         return;
     }
 
     if ( Servent::isIPWhitelisted( d_func()->peerIpAddress ) )
     {
         QTimer::singleShot( 0, this, SLOT( doSetup() ) );
+        emit authSuccessful();
         return;
     }
 
-    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Checking ACL for" << name();
-    connect( ACLRegistry::instance(), SIGNAL( aclResult( QString, QString, Tomahawk::ACLStatus::Type ) ),
-             this, SLOT( checkACLResult( QString, QString, Tomahawk::ACLStatus::Type ) ),
-             Qt::QueuedConnection );
-    QMetaObject::invokeMethod( ACLRegistry::instance(), "isAuthorizedUser", Qt::QueuedConnection, Q_ARG( QString, d->nodeid ), Q_ARG( QString, bareName() ), Q_ARG( Tomahawk::ACLStatus::Type, Tomahawk::ACLStatus::NotFound ) );
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Checking ACL for" << name();
+    d->aclRequest = Tomahawk::Network::ACL::aclrequest_ptr(
+                new Tomahawk::Network::ACL::AclRequest( d->nodeid, bareName(), Tomahawk::ACLStatus::NotFound ),
+                &QObject::deleteLater );
+    connect( d->aclRequest.data(), SIGNAL( decision( Tomahawk::ACLStatus::Type ) ), SLOT( aclDecision( Tomahawk::ACLStatus::Type ) ), Qt::QueuedConnection );
+    ACLRegistry::instance()->isAuthorizedRequest( d->aclRequest );
 }
 
 
@@ -354,29 +357,22 @@ Connection::bareName() const
 }
 
 void
-Connection::checkACLResult( const QString &nodeid, const QString &username, Tomahawk::ACLStatus::Type peerStatus )
+Connection::aclDecision( Tomahawk::ACLStatus::Type status )
 {
     Q_D( Connection );
-    QReadLocker nodeidLocker( &d->nodeidLock );
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "ACL decision for" << name() << ":" << status;
 
-    if ( nodeid != d->nodeid )
-    {
-        tDebug( LOGVERBOSE ) << Q_FUNC_INFO << QString( "nodeid (%1) not ours (%2) for user %3" ).arg( nodeid ).arg( d->nodeid ).arg( username );
-        return;
-    }
-    if ( username != bareName() )
-    {
-        tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "username not our barename";
-        return;
-    }
+    // We have a decision, free memory.
+    d->aclRequest.clear();
 
-    disconnect( ACLRegistry::instance(), SIGNAL( aclResult( QString, QString, Tomahawk::ACLStatus::Type ) ) );
-    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << QString( "ACL status for user %1 is" ).arg( username ) << peerStatus;
-    if ( peerStatus == Tomahawk::ACLStatus::Stream )
+    if ( status == Tomahawk::ACLStatus::Stream )
     {
         QTimer::singleShot( 0, this, SLOT( doSetup() ) );
+        emit authSuccessful();
         return;
     }
+
+    emit authFailed();
 
     shutdown();
 }
@@ -389,6 +385,8 @@ Connection::authCheckTimeout()
 
     if ( d->ready )
         return;
+
+    emit authTimeout();
 
     tDebug( LOGVERBOSE ) << "Closing connection, not authed in time.";
     shutdown();
@@ -633,8 +631,7 @@ Connection::sendMsg( QVariant j )
     if ( d->do_shutdown )
         return;
 
-    QJson::Serializer serializer;
-    const QByteArray payload = serializer.serialize( j );
+    const QByteArray payload = TomahawkUtils::toJson( j );
     tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Sending to" << id() << ":" << payload;
     sendMsg( Msg::factory( payload, Msg::JSON ) );
 }

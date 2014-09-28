@@ -46,10 +46,9 @@ public:
 
     QUrl openLink( const QString& title, const QString& artist, const QString& album ) const;
 
-public slots:
-    void shortenLink( const QUrl& url, const QVariant &callbackObj = QVariant() );
+    void installResolverFromFile( const QString& resolverPath );
 
-#ifndef ENABLE_HEADLESS
+public slots:
 
     /**
      * Try to open a URL as Playlist/Album/Artist/Track
@@ -59,9 +58,6 @@ public slots:
     /// Takes a spotify link and performs the default open action on it
     bool openSpotifyLink( const QString& link );
 
-    /// Takes a spotify link and performs the default open action on it
-    bool openRdioLink( const QString& link );
-
     /// Creates a link from the requested data and copies it to the clipboard
     void copyToClipboard( const Tomahawk::query_ptr& query );
 
@@ -70,7 +66,6 @@ public slots:
     void savePlaylistToFile( const Tomahawk::playlist_ptr& playlist, const QString& filename );
 
     bool parseTomahawkLink( const QString& link );
-    void getShortLink( const Tomahawk::playlist_ptr& playlist );
     void waitingForResolved( bool );
 
     Tomahawk::dynplaylist_ptr loadDynamicPlaylist( const QUrl& url, bool station );
@@ -79,19 +74,11 @@ public slots:
     void handleOpenTracks( const QList< Tomahawk::query_ptr >& queries );
 
     void handlePlayTrack( const Tomahawk::query_ptr& qry );
-#endif
-
-signals:
-    void shortLinkReady( const QUrl& longUrl, const QUrl& shortUrl, const QVariant& callbackObj );
 
 private slots:
     void informationForUrl( const QString& url, const QSharedPointer<QObject>& information );
+    void copyToClipboardReady( const QUrl& longUrl, const QUrl& shortUrl, const QVariant& callbackObj );
 
-    void shortenLinkRequestFinished();
-    void shortenLinkRequestError( QNetworkReply::NetworkError );
-
-#ifndef ENABLE_HEADLESS
-    void postShortenFinished();
     void showPlaylist();
 
     void playlistCreatedToShow( const Tomahawk::playlist_ptr& pl );
@@ -101,13 +88,11 @@ private slots:
 
     void playOrQueueNow( const Tomahawk::query_ptr& );
     void playNow( const Tomahawk::query_ptr& );
-#endif
 
 private:
     explicit GlobalActionManager( QObject* parent = 0 );
 
     /// handle opening of urls
-#ifndef ENABLE_HEADLESS
     bool handlePlaylistCommand( const QUrl& url );
     bool handleViewCommand( const QUrl& url );
     bool handleStationCommand( const QUrl& url );
@@ -119,19 +104,15 @@ private:
 
     bool playSpotify( const QUrl& url );
     bool queueSpotify( const QStringList& parts, const QList< QPair< QString, QString > >& queryItems );
-    bool playRdio( const QUrl& url );
-    bool queueRdio( const QStringList& parts, const QList< QPair< QString, QString > >& queryItems );
-#endif
 
     bool handleCollectionCommand( const QUrl& url );
     bool handlePlayCommand( const QUrl& url );
     bool handleOpenCommand( const QUrl& url );
+    bool handleLoveCommand( const QUrl& url );
 
     void createPlaylistFromUrl( const QString& type, const QString& url, const QString& title );
 
     QString hostname() const;
-
-    inline QByteArray percentEncode( const QUrl& url ) const;
 
     Tomahawk::playlist_ptr m_toShow;
     Tomahawk::query_ptr m_waitingToPlay;

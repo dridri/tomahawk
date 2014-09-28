@@ -25,25 +25,22 @@
 
 #include "PlaylistEntry.h"
 #include "SourceList.h"
+#include "ViewManager.h"
 #include <TomahawkSettings.h>
 
-#ifndef ENABLE_HEADLESS
-    #include "ViewManager.h"
-#endif
 
 using namespace Tomahawk;
 
 LocalCollection::LocalCollection( const Tomahawk::source_ptr& source, QObject* parent )
     : DatabaseCollection( source, parent )
 {
-
 }
 
 
 QString
 LocalCollection::prettyName() const
 {
-    return tr( "My Collection" );
+    return tr( "Your Collection" );
 }
 
 

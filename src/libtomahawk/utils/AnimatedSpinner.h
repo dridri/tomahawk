@@ -1,19 +1,21 @@
-/*
-    Copyright (C) 2012  Leo Franchi <leo.franchi@kdab.com>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+/* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
+ *
+ *   Copyright 2012, Leo Franchi <leo.franchi@kdab.com>
+ *   Copyright 2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *
+ *   Tomahawk is free software: you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   Tomahawk is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with Tomahawk. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef ANIMATED_SPINNER_H
 #define ANIMATED_SPINNER_H
@@ -52,7 +54,7 @@ public:
     QSize sizeHint() const;
 
     QPixmap pixmap() const { return m_pixmap; }
-    
+
     void setAutoCenter( bool enabled ) { m_autoCenter = enabled; }
 
 public slots:
@@ -63,7 +65,7 @@ signals:
     void requestUpdate();
 
 protected:
-    void paintEvent(QPaintEvent *event);
+    void paintEvent( QPaintEvent* event );
 
 private slots:
     void updatePixmap();
@@ -98,8 +100,8 @@ class DLLEXPORT LoadingSpinner : public AnimatedSpinner
     Q_OBJECT
 
 public:
-    explicit LoadingSpinner( QAbstractItemView* parent = 0 ); // widget mode
-    
+    explicit LoadingSpinner( QAbstractItemView* parent ); // widget mode
+
 private slots:
     void onViewModelChanged();
 

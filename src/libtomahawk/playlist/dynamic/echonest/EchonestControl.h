@@ -21,10 +21,10 @@
 
 #include "playlist/dynamic/DynamicControl.h"
 
-#include <echonest/Playlist.h>
-
 #include <QTimer>
 #include <QPointer>
+
+#include <echonest/Playlist.h>
 
 namespace Tomahawk
 {

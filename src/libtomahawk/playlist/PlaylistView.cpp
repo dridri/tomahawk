@@ -26,6 +26,7 @@
 #include "Source.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/Logger.h"
+#include "utils/DpiScaler.h"
 
 using namespace Tomahawk;
 
@@ -34,7 +35,6 @@ PlaylistView::PlaylistView( QWidget* parent )
     : TrackView( parent )
     , m_model( 0 )
 {
-    connect( contextMenu(), SIGNAL( triggered( int ) ), SLOT( onMenuTriggered( int ) ) );
 }
 
 
@@ -77,38 +77,6 @@ PlaylistView::keyPressEvent( QKeyEvent* event )
 }
 
 
-bool
-PlaylistView::eventFilter( QObject* obj, QEvent* event )
-{
-    if ( event->type() == QEvent::DragEnter )
-    {
-        QDragEnterEvent* e = static_cast<QDragEnterEvent*>(event);
-        dragEnterEvent( e );
-        return true;
-    }
-    if ( event->type() == QEvent::DragMove )
-    {
-        QDragMoveEvent* e = static_cast<QDragMoveEvent*>(event);
-        dragMoveEvent( e );
-        return true;
-    }
-    if ( event->type() == QEvent::DragLeave )
-    {
-        QDragLeaveEvent* e = static_cast<QDragLeaveEvent*>(event);
-        dragLeaveEvent( e );
-        return true;
-    }
-    if ( event->type() == QEvent::Drop )
-    {
-        QDropEvent* e = static_cast<QDropEvent*>(event);
-        dropEvent( e );
-        return true;
-    }
-
-    return QObject::eventFilter( obj, event );
-}
-
-
 QList<PlaylistUpdaterInterface*>
 PlaylistView::updaters() const
 {
@@ -135,7 +103,6 @@ PlaylistView::onChanged()
             setEmptyTip( tr( "This playlist is currently empty." ) );
         else
             setEmptyTip( tr( "This playlist is currently empty. Add some tracks to it and enjoy the music!" ) );
-        m_model->finishLoading();
 
         setGuid( proxyModel()->guid() );
 
@@ -155,6 +122,8 @@ PlaylistView::isTemporaryPage() const
 void
 PlaylistView::onMenuTriggered( int action )
 {
+    TrackView::onMenuTriggered( action );
+
     switch ( action )
     {
         default:
@@ -166,5 +135,7 @@ PlaylistView::onMenuTriggered( int action )
 QPixmap
 PlaylistView::pixmap() const
 {
-    return TomahawkUtils::defaultPixmap( TomahawkUtils::Playlist );
+    return TomahawkUtils::defaultPixmap( TomahawkUtils::Playlist,
+                                         TomahawkUtils::Original,
+                                         TomahawkUtils::DpiScaler::scaled( this, 80, 80 ) );
 }

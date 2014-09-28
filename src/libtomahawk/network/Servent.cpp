@@ -3,7 +3,7 @@
  *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
- *   Copyright 2013, Uwe L. Korn <uwelk@xhochy.com>
+ *   Copyright 2013-2014, Uwe L. Korn <uwelk@xhochy.com>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "accounts/AccountManager.h"
 #include "database/Database.h"
 #include "database/DatabaseImpl.h"
+#include "network/acl/AclRegistry.h"
 #include "network/Msg.h"
 #include "network/ConnectionManager.h"
 #include "network/DbSyncConnection.h"
@@ -31,19 +32,20 @@
 #include "sip/PeerInfo.h"
 #include "sip/SipPlugin.h"
 #include "utils/Closure.h"
+#include "utils/Json.h"
 #include "utils/TomahawkUtils.h"
 #include "utils/Logger.h"
+#include "utils/NetworkAccessManager.h"
+#include "utils/NetworkReply.h"
 
-#include "AclRegistry.h"
-#include "BufferIoDevice.h"
 #include "Connection.h"
 #include "ControlConnection.h"
 #include "PortFwdThread.h"
 #include "QTcpSocketExtra.h"
-#include "Result.h"
 #include "Source.h"
 #include "SourceList.h"
 #include "StreamConnection.h"
+#include "UrlHandler.h"
 
 #include <QCoreApplication>
 #include <QMutexLocker>
@@ -63,6 +65,7 @@ Q_DECLARE_METATYPE( QList< SipInfo > )
 Q_DECLARE_METATYPE( Connection* )
 Q_DECLARE_METATYPE( QTcpSocketExtra* )
 Q_DECLARE_METATYPE( Tomahawk::peerinfo_ptr )
+
 
 using namespace Tomahawk;
 
@@ -86,22 +89,8 @@ Servent::Servent( QObject* parent )
 
     setProxy( QNetworkProxy::NoProxy );
 
-    {
-        // _1 = result, _2 = callback function for IODevice
-        IODeviceFactoryFunc fac = boost::bind( &Servent::localFileIODeviceFactory, this, _1, _2 );
-        this->registerIODeviceFactory( "file", fac );
-    }
-
-    {
-        IODeviceFactoryFunc fac = boost::bind( &Servent::remoteIODeviceFactory, this, _1, _2 );
-        this->registerIODeviceFactory( "servent", fac );
-    }
-
-    {
-        IODeviceFactoryFunc fac = boost::bind( &Servent::httpIODeviceFactory, this, _1, _2 );
-        this->registerIODeviceFactory( "http", fac );
-        this->registerIODeviceFactory( "https", fac );
-    }
+    IODeviceFactoryFunc fac = boost::bind( &Servent::remoteIODeviceFactory, this, _1, _2, _3 );
+    Tomahawk::UrlHandler::registerIODeviceFactory( "servent", fac );
 }
 
 
@@ -128,54 +117,48 @@ Servent::startListening( QHostAddress ha, bool upnp, int port, Tomahawk::Network
 {
     Q_D( Servent );
 
-    d_func()->externalAddresses = QList<QHostAddress>();
-    d_func()->port = port;
+    d->externalAddresses = QList<QHostAddress>();
+    d->port = port;
 
     // Listen on both the selected port and, if not the same, the default port -- the latter sometimes necessary for zeroconf
     // TODO: only listen on both when zeroconf sip is enabled
     // TODO: use a real zeroconf system instead of a simple UDP broadcast?
-    if ( !listen( ha, d_func()->port ) )
+    if ( !listen( ha, d->port ) )
     {
-        if ( d_func()->port != defaultPort )
+        if ( d->port != defaultPort )
         {
             if ( !listen( ha, defaultPort ) )
             {
-                tLog() << Q_FUNC_INFO << "Failed to listen on both port" << d_func()->port << "and port" << defaultPort;
+                tLog() << Q_FUNC_INFO << "Failed to listen on both port" << d->port << "and port" << defaultPort;
                 tLog() << Q_FUNC_INFO << "Error string is:" << errorString();
                 return false;
             }
             else
-                d_func()->port = defaultPort;
+                d->port = defaultPort;
         }
     }
 
-    if ( ha == QHostAddress::AnyIPv6 )
+    d->externalListenAll = false;
+
+    if ( ha == QHostAddress::Any || ha == QHostAddress::AnyIPv6 )
     {
         // We are listening on all available addresses, so we should send a SipInfo for all of them.
-        foreach ( QHostAddress addr, QNetworkInterface::allAddresses() )
-        {
-            if ( addr.toString() == "127.0.0.1" )
-                continue; // IPv4 localhost
-            if ( addr.toString() == "::1" )
-                continue; // IPv6 localhost
-            if ( addr.toString() ==  "::7F00:1" )
-                continue; // IPv4 localhost as IPv6 address
-            if ( addr.isInSubnet( QHostAddress::parseSubnet( "fe80::/10" ) ) )
-                continue; // Skip link local addresses
-            tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Listening to " << addr.toString();
-            d_func()->externalAddresses.append( addr );
-        }
-
+        d->externalAddresses = QNetworkInterface::allAddresses();
+        cleanAddresses( d->externalAddresses );
+        tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Listening to" << d->externalAddresses;
+        d->externalListenAll = true;
     }
-    else if ( ( ha.toString() != "127.0.0.1" ) && ( ha.toString() != "::1" ) && ( ha.toString() !=  "::7F00:1" ) )
+    else if ( ( ha.toString() != "127.0.0.1" ) && ( ha.toString() != "::1" ) && ( ha.toString() != "::7F00:1" ) )
     {
         // We listen only to one specific Address, only announce this.
-        d_func()->externalAddresses.append( ha );
+        d->externalAddresses.append( ha );
     }
     // If we only accept connections via localhost, we'll announce nothing.
 
-    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Servent listening on port" << d_func()->port << "- servent thread:" << thread()
-           << "- address mode:" << (int)( mode );
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Servent listening on port" << d->port
+                       << "using address" << ha.toString()
+                       << "- servent thread:" << thread()
+                       << "- address mode:" << (int)( mode );
 
     switch ( mode )
     {
@@ -183,7 +166,7 @@ Servent::startListening( QHostAddress ha, bool upnp, int port, Tomahawk::Network
             d->externalPort = externalPort;
             if ( autoDetectExternalIp )
             {
-                QNetworkReply* reply = TomahawkUtils::nam()->get( QNetworkRequest( QUrl( "http://toma.hk/?stat=1" ) ) );
+                QNetworkReply* reply = Tomahawk::Utils::nam()->get( QNetworkRequest( QUrl( "http://toma.hk/?stat=1" ) ) );
                 connect( reply, SIGNAL( finished() ), SLOT( ipDetected() ) );
                 // Not emitting ready here as we are not done.
             }
@@ -198,24 +181,24 @@ Servent::startListening( QHostAddress ha, bool upnp, int port, Tomahawk::Network
 
         case Tomahawk::Network::ExternalAddress::Lan:
             // Nothing has to be done here.
-            d_func()->ready = true;
+            d->ready = true;
             emit ready();
             break;
 
         case Tomahawk::Network::ExternalAddress::Upnp:
             if ( upnp )
             {
-                // upnp could be turned of on the cli with --noupnp
+                // upnp could be turned off on the cli with --noupnp
                 tLog( LOGVERBOSE ) << Q_FUNC_INFO << "External address mode set to upnp...";
-                d_func()->portfwd = QPointer< PortFwdThread >( new PortFwdThread( d_func()->port ) );
-                Q_ASSERT( d_func()->portfwd );
-                connect( d_func()->portfwd.data(), SIGNAL( externalAddressDetected( QHostAddress, unsigned int ) ),
+                d->portfwd = QPointer< PortFwdThread >( new PortFwdThread( d->port ) );
+                Q_ASSERT( d->portfwd );
+                connect( d->portfwd.data(), SIGNAL( externalAddressDetected( QHostAddress, unsigned int ) ),
                                       SLOT( setExternalAddress( QHostAddress, unsigned int ) ) );
-                d_func()->portfwd.data()->start();
+                d->portfwd.data()->start();
             }
             else
             {
-                d_func()->ready = true;
+                d->ready = true;
                 emit ready();
             }
             break;
@@ -273,46 +256,46 @@ Servent::isValidExternalIP( const QHostAddress& addr )
     if (addr.protocol() == QAbstractSocket::IPv4Protocol)
     {
         // private network
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("10.0.0.0/8")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "10.0.0.0/8" ) ) )
             return false;
         // localhost
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("127.0.0.0/8")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "127.0.0.0/8" ) ) )
             return false;
         // private network
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("169.254.0.0/16")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "169.254.0.0/16" ) ) )
             return false;
         // private network
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("172.16.0.0/12")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "172.16.0.0/12" ) ) )
             return false;
         // private network
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("192.168.0.0/16")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "192.168.0.0/16" ) ) )
             return false;
         // multicast
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("224.0.0.0/4")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "224.0.0.0/4" ) ) )
             return false;
     }
     else if (addr.protocol() == QAbstractSocket::IPv4Protocol)
     {
         // "unspecified address"
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("::/128")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "::/128" ) ) )
             return false;
         // link-local
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("fe80::/10")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "fe80::/10" ) ) )
             return false;
         // unique local addresses
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("fc00::/7")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "fc00::/7" ) ) )
             return false;
         // benchmarking only
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("2001:2::/48")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "2001:2::/48" ) ) )
             return false;
         // non-routed IPv6 addresses used for Cryptographic Hash Identifiers
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("2001:10::/28")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "2001:10::/28" ) ) )
             return false;
         // documentation prefix
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("2001:db8::/32")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "2001:db8::/32" ) ) )
             return false;
         // multicast
-        if ( addr.isInSubnet(QHostAddress::parseSubnet("ff00::0/8 ")) )
+        if ( addr.isInSubnet(QHostAddress::parseSubnet( "ff00::0/8" ) ) )
             return false;
     }
     else
@@ -356,30 +339,39 @@ Servent::deleteLazyOffer( const QString& key )
     }
 }
 
+
 void
 Servent::registerControlConnection( ControlConnection* conn )
 {
+    Q_D( Servent );
     Q_ASSERT( conn );
+
+    QMutexLocker locker( &d->controlconnectionsMutex );
     tLog( LOGVERBOSE ) << Q_FUNC_INFO << conn->name();
-    d_func()->controlconnections << conn;
-    d_func()->connectedNodes << conn->id();
+    d->controlconnections << conn;
+    d->connectedNodes << conn->id();
 }
 
 
 void
 Servent::unregisterControlConnection( ControlConnection* conn )
 {
+    Q_D( Servent );
     Q_ASSERT( conn );
 
+    QMutexLocker locker( &d->controlconnectionsMutex );
     tLog( LOGVERBOSE ) << Q_FUNC_INFO << conn->name();
-    d_func()->connectedNodes.removeAll( conn->id() );
-    d_func()->controlconnections.removeAll( conn );
+    d->connectedNodes.removeAll( conn->id() );
+    d->controlconnections.removeAll( conn );
 }
 
 
 ControlConnection*
 Servent::lookupControlConnection( const SipInfo& sipInfo )
 {
+    Q_D( Servent );
+    QMutexLocker locker( &d->controlconnectionsMutex );
+
     foreach ( ControlConnection* c, d_func()->controlconnections )
     {
         tLog() << sipInfo.port() << c->peerPort() << sipInfo.host() << c->peerIpAddress().toString();
@@ -394,6 +386,9 @@ Servent::lookupControlConnection( const SipInfo& sipInfo )
 ControlConnection*
 Servent::lookupControlConnection( const QString& nodeid )
 {
+    Q_D( Servent );
+    QMutexLocker locker( &d->controlconnectionsMutex );
+
     foreach ( ControlConnection* c, d_func()->controlconnections )
     {
         if ( c->id() == nodeid )
@@ -406,8 +401,18 @@ Servent::lookupControlConnection( const QString& nodeid )
 QList<SipInfo>
 Servent::getLocalSipInfos( const QString& nodeid, const QString& key )
 {
+    Q_D( Servent );
+
     QList<SipInfo> sipInfos = QList<SipInfo>();
-    foreach ( QHostAddress ha, d_func()->externalAddresses )
+    QList<QHostAddress> addresses = d->externalAddresses;
+
+    if ( d->externalListenAll )
+    {
+        addresses = QNetworkInterface::allAddresses();
+        cleanAddresses( addresses );
+    }
+
+    foreach ( QHostAddress ha, addresses )
     {
         SipInfo info = SipInfo();
         info.setHost( ha.toString() );
@@ -570,7 +575,11 @@ Servent::handleSipInfo( const Tomahawk::peerinfo_ptr& peerInfo )
 
 
 void
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
+Servent::incomingConnection( qintptr sd )
+#else
 Servent::incomingConnection( int sd )
+#endif
 {
     Q_ASSERT( this->thread() == QThread::currentThread() );
 
@@ -594,6 +603,7 @@ Servent::incomingConnection( int sd )
 void
 Servent::readyRead()
 {
+    Q_D( Servent );
     Q_ASSERT( this->thread() == QThread::currentThread() );
     QPointer< QTcpSocketExtra > sock = (QTcpSocketExtra*)sender();
     tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Starting to read from new incoming connection from: " << sock->peerAddress().toString();
@@ -629,7 +639,7 @@ Servent::readyRead()
     ControlConnection* cc = 0;
     bool ok;
     QString key, conntype, nodeid, controlid;
-    QVariantMap m = d_func()->parser.parse( sock.data()->_msg->payload(), &ok ).toMap();
+    QVariantMap m = TomahawkUtils::parseJson( sock.data()->_msg->payload(), &ok ).toMap();
     if ( !ok )
     {
         tDebug() << "Invalid JSON on new connection, aborting";
@@ -644,6 +654,7 @@ Servent::readyRead()
     tDebug( LOGVERBOSE ) << "Incoming connection details:" << m;
     if ( !nodeid.isEmpty() ) // only control connections send nodeid
     {
+        QMutexLocker locker( &d->controlconnectionsMutex );
         bool dupe = false;
         if ( d_func()->connectedNodes.contains( nodeid ) )
         {
@@ -700,15 +711,18 @@ Servent::readyRead()
         }
     }
 
-    foreach ( ControlConnection* con, d_func()->controlconnections )
     {
-        Q_ASSERT( con );
-
-        // Only check for known inboud ControlConnections
-        if ( con->id() == controlid && !con->outbound() )
+        QMutexLocker locker( &d->controlconnectionsMutex );
+        foreach ( ControlConnection* con, d_func()->controlconnections )
         {
-            cc = con;
-            break;
+            Q_ASSERT( con );
+
+            // Only check for known inboud ControlConnections
+            if ( con->id() == controlid && !con->outbound() )
+            {
+                cc = con;
+                break;
+            }
         }
     }
 
@@ -787,8 +801,9 @@ Servent::createParallelConnection( Connection* orig_conn, Connection* new_conn, 
         m.insert( "offer", key );
         m.insert( "controlid", Database::instance()->impl()->dbid() );
 
-        QJson::Serializer ser;
-        orig_conn->sendMsg( Msg::factory( ser.serialize(m), Msg::JSON ) );
+        if (orig_conn) {
+            orig_conn->sendMsg( Msg::factory( TomahawkUtils::toJson( m ), Msg::JSON ) );
+        }
     }
 }
 
@@ -835,7 +850,7 @@ Servent::handoverSocket( Connection* conn, QTcpSocketExtra* sock )
 
 
 void
-Servent::cleanupSocket( QTcpSocketExtra *sock )
+Servent::cleanupSocket( QTcpSocketExtra* sock )
 {
     if ( !sock )
     {
@@ -854,21 +869,30 @@ Servent::cleanupSocket( QTcpSocketExtra *sock )
 void
 Servent::initiateConnection( const SipInfo& sipInfo, Connection* conn )
 {
+    Q_D( Servent );
+
     Q_ASSERT( sipInfo.isValid() );
     Q_ASSERT( sipInfo.isVisible() );
     Q_ASSERT( sipInfo.port() > 0 );
     Q_ASSERT( conn );
 
     // Check that we are not connecting to ourselves
-    foreach( QHostAddress ha, d_func()->externalAddresses )
+    QList<QHostAddress> addresses = d->externalAddresses;
+
+    if ( d->externalListenAll )
     {
-        if ( sipInfo.host() == ha.toString() )
+        addresses = QNetworkInterface::allAddresses();
+    }
+
+    foreach ( QHostAddress ha, addresses )
+    {
+        if ( sipInfo.host() == ha.toString() && sipInfo.port() == d_func()->port )
         {
             tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Tomahawk won't try to connect to" << sipInfo.host() << ":" << sipInfo.port() << ": same IP as ourselves.";
             return;
         }
     }
-    if ( sipInfo.host() == d_func()->externalHostname )
+    if ( sipInfo.host() == d_func()->externalHostname && sipInfo.port() == d_func()->port )
     {
         tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Tomahawk won't try to connect to" << sipInfo.host() << ":" << sipInfo.port() << ": same IP as ourselves.";
         return;
@@ -958,6 +982,7 @@ Servent::checkACLResult( const QString& nodeid, const QString& username, Tomahaw
     d_func()->queuedForACLResult[username].remove( nodeid );
 }
 
+
 void
 Servent::ipDetected()
 {
@@ -966,9 +991,9 @@ Servent::ipDetected()
 
     if ( reply->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
         bool ok;
-        const QVariantMap res = p.parse( reply, &ok ).toMap();
+        // We are called when the NetworkReply has finished so we should have all data available.
+        const QVariantMap res = TomahawkUtils::parseJson( reply->readAll(), &ok ).toMap();
         if ( !ok )
         {
             tLog() << Q_FUNC_INFO << "Failed parsing ip-autodetection response";
@@ -1049,7 +1074,16 @@ Servent::port() const
 QList<QHostAddress>
 Servent::addresses() const
 {
-    return d_func()->externalAddresses;
+    Q_D( const Servent );
+
+    if ( d->externalListenAll )
+    {
+        QList<QHostAddress> addresses( QNetworkInterface::allAddresses() );
+        cleanAddresses( addresses );
+        return addresses;
+    }
+
+    return d->externalAddresses;
 }
 
 
@@ -1067,22 +1101,41 @@ Servent::additionalPort() const
 }
 
 
+bool
+equalByIPv6Address( QHostAddress a1, QHostAddress a2 )
+{
+    Q_IPV6ADDR addr1 = a1.toIPv6Address();
+    Q_IPV6ADDR addr2 = a2.toIPv6Address();
+
+    for (int i = 0; i < 16; ++i)
+    {
+        if ( addr1[i] != addr2[i] )
+            return false;
+    }
+    return true;
+}
+
+
 // return the appropriate connection for a given offer key, or NULL if invalid
 Connection*
 Servent::claimOffer( ControlConnection* cc, const QString &nodeid, const QString &key, const QHostAddress peer )
 {
+    Q_D( Servent );
+
     // magic key for stream connections:
     if ( key.startsWith( "FILE_REQUEST_KEY:" ) )
     {
         // check if the source IP matches an existing, authenticated connection
-        if ( !d_func()->noAuth && peer != QHostAddress::Any && !isIPWhitelisted( peer ) )
+        if ( !d->noAuth && peer != QHostAddress::Any && !isIPWhitelisted( peer ) )
         {
             bool authed = false;
             tDebug() << Q_FUNC_INFO << "Checking for ControlConnection with IP" << peer;
-            foreach ( ControlConnection* cc, d_func()->controlconnections )
+            QMutexLocker locker( &d->controlconnectionsMutex );
+            foreach ( ControlConnection* cc, d->controlconnections )
             {
                 tDebug() << Q_FUNC_INFO << "Probing:" << cc->name();
-                if ( cc->socket() && cc->socket()->peerAddress() == peer )
+                // Always compare IPv6 addresses as IPv4 address are sometime simply IPv4 addresses, sometimes mapped IPv6 addresses
+                if ( cc->socket() && equalByIPv6Address( cc->socket()->peerAddress(), peer ) )
                 {
                     authed = true;
                     break;
@@ -1129,12 +1182,12 @@ Servent::claimOffer( ControlConnection* cc, const QString &nodeid, const QString
         }
     }
 
-    if ( d_func()->lazyoffers.contains( key ) )
+    if ( d->lazyoffers.contains( key ) )
     {
         ControlConnection* conn = new ControlConnection( this );
-        conn->setName( d_func()->lazyoffers.value( key ).first->contactId() );
-        conn->addPeerInfo( d_func()->lazyoffers.value( key ).first );
-        conn->setId( d_func()->lazyoffers.value( key ).second );
+        conn->setName( d->lazyoffers.value( key ).first->contactId() );
+        conn->addPeerInfo( d->lazyoffers.value( key ).first );
+        conn->setId( d->lazyoffers.value( key ).second );
 
         if ( !nodeid.isEmpty() )
         {
@@ -1145,9 +1198,9 @@ Servent::claimOffer( ControlConnection* cc, const QString &nodeid, const QString
 
         return conn;
     }
-    else if ( d_func()->offers.contains( key ) )
+    else if ( d->offers.contains( key ) )
     {
-        QPointer<Connection> conn = d_func()->offers.value( key );
+        QPointer<Connection> conn = d->offers.value( key );
         if ( conn.isNull() )
         {
             // This can happen if it's a streamconnection, but the audioengine has
@@ -1167,7 +1220,7 @@ Servent::claimOffer( ControlConnection* cc, const QString &nodeid, const QString
 
         if ( conn.data()->onceOnly() )
         {
-            d_func()->offers.remove( key );
+            d->offers.remove( key );
             return conn.data();
         }
         else
@@ -1175,7 +1228,7 @@ Servent::claimOffer( ControlConnection* cc, const QString &nodeid, const QString
             return conn.data()->clone();
         }
     }
-    else if ( d_func()->noAuth )
+    else if ( d->noAuth )
     {
         Connection* conn;
         conn = new ControlConnection( this );
@@ -1191,18 +1244,18 @@ Servent::claimOffer( ControlConnection* cc, const QString &nodeid, const QString
 
 
 void
-Servent::remoteIODeviceFactory( const Tomahawk::result_ptr& result,
-                                boost::function< void ( QSharedPointer< QIODevice >& ) > callback )
+Servent::remoteIODeviceFactory( const Tomahawk::result_ptr& result, const QString& url,
+                                boost::function< void ( const QString&, QSharedPointer< QIODevice >& ) > callback )
 {
     QSharedPointer<QIODevice> sp;
 
-    QStringList parts = result->url().mid( QString( "servent://" ).length() ).split( "\t" );
+    QStringList parts = url.mid( QString( "servent://" ).length() ).split( "\t" );
     const QString sourceName = parts.at( 0 );
     const QString fileId = parts.at( 1 );
     source_ptr s = SourceList::instance()->get( sourceName );
     if ( s.isNull() || !s->controlConnection() )
     {
-        callback( sp );
+        callback( result->url(), sp );
         return;
     }
 
@@ -1212,7 +1265,7 @@ Servent::remoteIODeviceFactory( const Tomahawk::result_ptr& result,
 
     //boost::functions cannot accept temporaries as parameters
     sp = sc->iodevice();
-    callback( sp );
+    callback( result->url(), sp );
 }
 
 
@@ -1258,6 +1311,37 @@ Servent::printCurrentTransfers()
 }
 
 
+void
+Servent::cleanAddresses( QList<QHostAddress>& addresses ) const
+{
+    QList<QHostAddress>::iterator iter = addresses.begin();
+    while ( iter != addresses.end() )
+    {
+        QString hostString = iter->toString();
+        if ( hostString.startsWith( QLatin1String( "127.0.0." ) ) //< IPv4 localhost
+             // IPv6 localhost
+             || hostString == "::1"
+             // IPv4 localhost as IPv6 address
+             || hostString == "::7F00:1" )
+        {
+            iter = addresses.erase( iter );
+            // Always continue if we changed iter as we might have reached the end
+            continue;
+        }
+
+        // Remove IPv6 link local addresses
+        if ( iter->isInSubnet( QHostAddress::parseSubnet( "fe80::/10" ) ) )
+        {
+            iter = addresses.erase( iter );
+            continue;
+        }
+
+        // Advance to next element
+        ++iter;
+    }
+}
+
+
 bool
 Servent::isIPWhitelisted( QHostAddress ip )
 {
@@ -1280,6 +1364,35 @@ Servent::isIPWhitelisted( QHostAddress ip )
             }
         }
     }
+
+#if QT_VERSION < QT_VERSION_CHECK( 5, 0, 0 )
+    // Qt4 cannot cope correctly with IPv4 addresses mapped into the IPv6
+    // address space
+    if ( ip.protocol() == QAbstractSocket::IPv6Protocol )
+    {
+        Q_IPV6ADDR ipv6 = ip.toIPv6Address();
+        // Check if it is actually an IPv4 address
+        // First 80 bits are zero, then 16 bits 1s
+        bool isIPv4 = true;
+        for ( int i = 0; i < 9; i++) {
+            isIPv4 &= ( ipv6[i] == 0 );
+        }
+        isIPv4 &= ( ipv6[10] == 0xff );
+        isIPv4 &= ( ipv6[11] == 0xff );
+
+        if ( isIPv4 )
+        {
+            // Convert to a real IPv4 address and rerun checks
+            quint32 ipv4 = (static_cast<quint32>(ipv6[12]) << 24)
+                    | (static_cast<quint32>(ipv6[13]) << 16)
+                    | (static_cast<quint32>(ipv6[14]) << 8)
+                    | static_cast<quint32>(ipv6[15]);
+            QHostAddress addr( ipv4 );
+            return isIPWhitelisted( addr );
+        }
+    }
+#endif
+
     tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "failure";
     return false;
 }
@@ -1288,6 +1401,9 @@ Servent::isIPWhitelisted( QHostAddress ip )
 bool
 Servent::connectedToSession( const QString& session )
 {
+    Q_D( Servent );
+
+    QMutexLocker locker( &d->controlconnectionsMutex );
     foreach ( ControlConnection* cc, d_func()->controlconnections )
     {
         Q_ASSERT( cc );
@@ -1307,7 +1423,7 @@ Servent::numConnectedPeers() const
 }
 
 
-QList<StreamConnection *>
+QList<StreamConnection*>
 Servent::streams() const
 {
     return d_func()->scsessions;
@@ -1329,67 +1445,6 @@ Servent::triggerDBSync()
             src->controlConnection()->dbSyncConnection()->trigger();
     }
     emit dbSyncTriggered();
-}
-
-
-void
-Servent::registerIODeviceFactory( const QString &proto,
-                                  IODeviceFactoryFunc fac )
-{
-    d_func()->iofactories.insert( proto, fac );
-}
-
-
-void
-Servent::getIODeviceForUrl( const Tomahawk::result_ptr& result,
-                            boost::function< void ( QSharedPointer< QIODevice >& ) > callback )
-{
-    QSharedPointer<QIODevice> sp;
-
-    QRegExp rx( "^([a-zA-Z0-9]+)://(.+)$" );
-    if ( rx.indexIn( result->url() ) == -1 )
-    {
-        callback( sp );
-        return;
-    }
-
-    const QString proto = rx.cap( 1 );
-    if ( !d_func()->iofactories.contains( proto ) )
-    {
-        callback( sp );
-        return;
-    }
-
-    //JSResolverHelper::customIODeviceFactory is async!
-    d_func()->iofactories.value( proto )( result, callback );
-}
-
-
-void
-Servent::localFileIODeviceFactory( const Tomahawk::result_ptr& result,
-                                   boost::function< void ( QSharedPointer< QIODevice >& ) > callback )
-{
-    // ignore "file://" at front of url
-    QFile* io = new QFile( result->url().mid( QString( "file://" ).length() ) );
-    if ( io )
-        io->open( QIODevice::ReadOnly );
-
-    //boost::functions cannot accept temporaries as parameters
-    QSharedPointer< QIODevice > sp = QSharedPointer<QIODevice>( io );
-    callback( sp );
-}
-
-
-void
-Servent::httpIODeviceFactory( const Tomahawk::result_ptr& result,
-                              boost::function< void ( QSharedPointer< QIODevice >& ) > callback )
-{
-    QNetworkRequest req( result->url() );
-    QNetworkReply* reply = TomahawkUtils::nam()->get( req );
-
-    //boost::functions cannot accept temporaries as parameters
-    QSharedPointer< QIODevice > sp = QSharedPointer< QIODevice >( reply, &QObject::deleteLater );
-    callback( sp );
 }
 
 

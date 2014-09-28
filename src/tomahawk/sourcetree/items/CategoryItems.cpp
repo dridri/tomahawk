@@ -21,8 +21,6 @@
 
 #include <QMimeData>
 
-#include <echonest/Playlist.h>
-
 #include "DropJob.h"
 #include "TomahawkApp.h"
 #include "ViewManager.h"
@@ -35,6 +33,8 @@
 #include "widgets/NewPlaylistWidget.h"
 #include "utils/ImageRegistry.h"
 #include "utils/Logger.h"
+
+#include <echonest/Playlist.h>
 
 using namespace Tomahawk;
 

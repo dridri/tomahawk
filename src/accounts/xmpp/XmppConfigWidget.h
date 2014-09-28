@@ -56,6 +56,7 @@ signals:
 
 private slots:
     void onCheckJidExists( const QString& jid );
+    void launchExternalConfigDialog();
 
 private:
     Ui::XmppConfigWidget *m_ui;
@@ -65,10 +66,11 @@ private:
 
     bool m_disableChecksForGoogle;
     friend class GoogleWrapper; // So google wrapper can modify the labels and text
+    friend class XmppAccount; // So xmpp 'wrapper' can modify the labels and text
 };
 
 }
 
 }
 
-#endif // TWITTERCONFIGWIDGET_H
+#endif // JABBERACCOUNTCONFIGWIDGET_H

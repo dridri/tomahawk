@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -35,12 +35,15 @@
 #include "Typedefs.h"
 #include "PlaylistInterface.h"
 #include "ViewPage.h"
+#include "utils/DpiScaler.h"
 
 #include "DllMacro.h"
 
+class QScrollArea;
+class QStackedWidget;
 class PlayableModel;
 class PlaylistModel;
-class StatsGauge;
+class BasicHeader;
 
 namespace Ui
 {
@@ -49,7 +52,7 @@ namespace Ui
 
 class MetaArtistInfoInterface;
 
-class DLLEXPORT ArtistInfoWidget : public QWidget, public Tomahawk::ViewPage
+class DLLEXPORT ArtistInfoWidget : public QWidget, public Tomahawk::ViewPage, private TomahawkUtils::DpiScaler
 {
 Q_OBJECT
 
@@ -90,9 +93,9 @@ signals:
 
 protected:
     void changeEvent( QEvent* e );
+    bool eventFilter( QObject* obj, QEvent* event );
 
 private slots:
-    void onArtistStatsLoaded();
     void onArtistImageUpdated();
     void onBiographyLoaded();
 
@@ -101,18 +104,30 @@ private slots:
     void onSimilarArtistsLoaded();
 
     void onBiographyLinkClicked( const QUrl& url );
+    void onAlbumsMoreClicked();
+    void onTopHitsMoreClicked();
+    void onPageClosed();
+
+    void onMusicAnchorClicked();
+    void onBioAnchorClicked();
+    void onRelatedArtistsAnchorClicked();
+
+    void onSliderValueChanged( int value );
 
 private:
     Ui::ArtistInfoWidget *ui;
 
-    Tomahawk::artist_ptr m_artist;
+    QWidget* m_widget;
+    BasicHeader* m_headerWidget;
+    QScrollArea* m_area;
 
+    Tomahawk::artist_ptr m_artist;
     PlayableModel* m_relatedModel;
     PlayableModel* m_albumsModel;
-    PlaylistModel* m_topHitsModel;
+    PlayableModel* m_topHitsModel;
     Tomahawk::playlistinterface_ptr m_plInterface;
 
-    StatsGauge* m_playStatsGauge;
+    QStackedWidget* m_stackedWidget;
 
     QString m_title;
     QString m_description;

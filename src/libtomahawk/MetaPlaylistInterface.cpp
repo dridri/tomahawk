@@ -52,6 +52,13 @@ MetaPlaylistInterface::addChildInterface( const Tomahawk::playlistinterface_ptr&
 }
 
 
+void
+MetaPlaylistInterface::removeChildInterface( const Tomahawk::playlistinterface_ptr& interface )
+{
+    m_childInterfaces.removeAll( interface );
+}
+
+
 QList< Tomahawk::query_ptr >
 MetaPlaylistInterface::tracks() const
 {
@@ -75,7 +82,7 @@ MetaPlaylistInterface::trackCount() const
 result_ptr
 MetaPlaylistInterface::currentItem() const
 {
-    if ( m_childInterfaces.count() )
+    if ( m_childInterfaces.count() && m_childInterfaces.first() )
         return m_childInterfaces.first()->currentItem();
     else
         return Tomahawk::result_ptr();

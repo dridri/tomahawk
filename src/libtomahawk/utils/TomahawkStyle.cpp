@@ -170,6 +170,17 @@ TomahawkStyle::stylePageFrame( QFrame* frame )
 {
     frame->setStyleSheet( QString( "QFrame#%1 { background-color: transparent; border: 0px solid white; border-radius: 0px; }" )
                              .arg( frame->objectName() ) );
+    frame->setFrameShape( QFrame::NoFrame );
+    frame->setAttribute( Qt::WA_MacShowFocusRect, 0 );
+}
+
+
+void
+TomahawkStyle::stylePageWidget( QWidget* widget )
+{
+    widget->setStyleSheet( QString( "QWidget#%1 { background-color: white; border: 0px solid white; border-radius: 0px; }" )
+                              .arg( widget->objectName() ) );
+    widget->setAttribute( Qt::WA_MacShowFocusRect, 0 );
 }
 
 
@@ -203,8 +214,15 @@ TomahawkStyle::loadFonts()
     QDir dir( ":/data/fonts" );
     foreach ( const QString& fileName, dir.entryList() )
     {
-        tDebug() << "Trying to add font resource:" << fileName;
+        tDebug( LOGVERBOSE ) << "Trying to add font resource:" << fileName;
         const int id = QFontDatabase::addApplicationFont( ":/data/fonts/" + fileName );
-        tDebug() << "Added font:" << id << QFontDatabase::applicationFontFamilies( id ).first();
+        if ( id >= 0 )
+        {
+            tDebug( LOGVERBOSE ) << "Added font:" << id << QFontDatabase::applicationFontFamilies( id ).first();
+        }
+        else
+        {
+            tDebug() << "Could not add font resource:" << fileName;
+        }
     }
 }

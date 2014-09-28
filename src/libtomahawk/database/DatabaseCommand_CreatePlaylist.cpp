@@ -18,15 +18,18 @@
 
 #include "DatabaseCommand_CreatePlaylist.h"
 
-#include <QSqlQuery>
-
 #include "network/Servent.h"
+#include "utils/Json.h"
 #include "utils/Logger.h"
 
 #include "DatabaseImpl.h"
 #include "Playlist.h"
 #include "SourceList.h"
 #include "TomahawkSqlQuery.h"
+
+#include <QDateTime>
+#include <QSqlQuery>
+
 
 using namespace Tomahawk;
 
@@ -59,7 +62,7 @@ QVariant
 DatabaseCommand_CreatePlaylist::playlistV() const
 {
     if( m_v.isNull() )
-        return QJson::QObjectHelper::qobject2qvariant( (QObject*)m_playlist.data() );
+        return TomahawkUtils::qobject2qvariant( (QObject*)m_playlist.data() );
     else
         return m_v;
  }
@@ -114,12 +117,12 @@ DatabaseCommand_CreatePlaylist::createPlaylist( DatabaseImpl* lib, bool dynamic)
                  "VALUES( :guid, :source, :shared, :title, :info, :creator, :lastmodified, :dynplaylist, :createdOn )" );
 
     cre.bindValue( ":source", source()->isLocal() ? QVariant(QVariant::Int) : source()->id() );
-    cre.bindValue( ":dynplaylist", dynamic );
+    cre.bindValue( ":dynplaylist", dynamic ? "true" : "false" );
     cre.bindValue( ":createdOn", now );
     if ( !m_playlist.isNull() )
     {
         cre.bindValue( ":guid", m_playlist->guid() );
-        cre.bindValue( ":shared", m_playlist->shared() );
+        cre.bindValue( ":shared", m_playlist->shared() ? "true" : "false" );
         cre.bindValue( ":title", m_playlist->title() );
         cre.bindValue( ":info", m_playlist->info() );
         cre.bindValue( ":creator", m_playlist->creator() );

@@ -20,16 +20,20 @@
 
 #include "ScriptResolver.h"
 
+#include "accounts/AccountConfigWidget.h"
+#include "utils/TomahawkUtilsGui.h"
+#include "utils/Json.h"
+#include "utils/Logger.h"
+#include "utils/NetworkAccessManager.h"
+#include "utils/NetworkProxyFactory.h"
+
 #include "Artist.h"
 #include "Album.h"
 #include "Pipeline.h"
 #include "Result.h"
 #include "ScriptCollection.h"
 #include "SourceList.h"
-
-#include "accounts/AccountConfigWidget.h"
-#include "utils/TomahawkUtilsGui.h"
-#include "utils/Logger.h"
+#include "Track.h"
 
 #include <QtEndian>
 #include <QFileInfo>
@@ -57,7 +61,7 @@ ScriptResolver::ScriptResolver( const QString& exe )
 
     startProcess();
 
-    if ( !TomahawkUtils::nam() )
+    if ( !Tomahawk::Utils::nam() )
         return;
 
     // set the name to the binary, if we launch properly we'll get the name the resolver reports
@@ -97,8 +101,9 @@ ScriptResolver::~ScriptResolver()
 
 
 Tomahawk::ExternalResolver*
-ScriptResolver::factory( const QString& exe, const QStringList& unused )
+ScriptResolver::factory( const QString& accountId, const QString& exe, const QStringList& unused )
 {
+    Q_UNUSED( accountId )
     Q_UNUSED( unused )
 
     ExternalResolver* res = 0;
@@ -136,7 +141,11 @@ ScriptResolver::sendConfig()
 
     m_configSent = true;
 
-    TomahawkUtils::NetworkProxyFactory* factory = dynamic_cast<TomahawkUtils::NetworkProxyFactory*>( TomahawkUtils::nam()->proxyFactory() );
+    tDebug() << "Nam is:" << Tomahawk::Utils::nam();
+    tDebug() << "Nam proxy is:" << Tomahawk::Utils::nam()->proxyFactory();
+    Tomahawk::Utils::nam()->proxyFactory()->queryProxy();
+    Tomahawk::Utils::NetworkProxyFactory* factory = dynamic_cast<Tomahawk::Utils::NetworkProxyFactory*>( Tomahawk::Utils::nam()->proxyFactory() );
+    tDebug() << "Factory is:" << factory;
     QNetworkProxy proxy = factory->proxy();
     QString proxyType = ( proxy.type() == QNetworkProxy::Socks5Proxy ? "socks5" : "none" );
     m.insert( "proxytype", proxyType );
@@ -151,7 +160,9 @@ ScriptResolver::sendConfig()
         hosts << host;
     m.insert( "noproxyhosts", hosts );
 
-    QByteArray data = m_serializer.serialize( m );
+    bool ok;
+    QByteArray data = TomahawkUtils::toJson( m, &ok );
+    Q_ASSERT( ok );
     sendMsg( data );
 }
 
@@ -173,7 +184,9 @@ ScriptResolver::running() const
 void
 ScriptResolver::sendMessage( const QVariantMap& map )
 {
-    QByteArray data = m_serializer.serialize( map );
+    bool ok;
+    QByteArray data = TomahawkUtils::toJson( map, &ok );
+    Q_ASSERT( ok );
     sendMsg( data );
 }
 
@@ -246,10 +259,10 @@ ScriptResolver::handleMsg( const QByteArray& msg )
         return;
 
     bool ok;
-    QVariant v = m_parser.parse( msg, &ok );
+    QVariant v = TomahawkUtils::parseJson( msg, &ok );
     if ( !ok || v.type() != QVariant::Map )
     {
-        Q_ASSERT(false);
+        Q_ASSERT( false );
         return;
     }
     QVariantMap m = v.toMap();
@@ -375,7 +388,7 @@ ScriptResolver::resolve( const Tomahawk::query_ptr& query )
             m.insert( "resultHint", query->resultHint() );
     }
 
-    const QByteArray msg = m_serializer.serialize( QVariant( m ) );
+    const QByteArray msg = TomahawkUtils::toJson( QVariant( m ) );
     sendMsg( msg );
 }
 
@@ -520,7 +533,9 @@ ScriptResolver::saveConfig()
     m.insert( "_msgtype", "setpref" );
     QVariant widgets = configMsgFromWidget( m_configWidget.data() );
     m.insert( "widgets", widgets );
-    QByteArray data = m_serializer.serialize( m );
+    bool ok;
+    QByteArray data = TomahawkUtils::toJson( m, &ok );
+    Q_ASSERT( ok );
 
     sendMsg( data );
 }

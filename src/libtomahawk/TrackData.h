@@ -24,10 +24,12 @@
 #include <QFuture>
 #include <QVariant>
 
-#include "Typedefs.h"
 #include "infosystem/InfoSystem.h"
-
 #include "DllMacro.h"
+#include "PlaybackLog.h"
+#include "SocialAction.h"
+#include "Typedefs.h"
+
 
 namespace Tomahawk
 {
@@ -35,21 +37,6 @@ namespace Tomahawk
 class DatabaseCommand_LogPlayback;
 class DatabaseCommand_PlaybackHistory;
 class IdThreadWorker;
-
-struct SocialAction
-{
-    QVariant action;
-    QVariant value;
-    QVariant timestamp;
-    Tomahawk::source_ptr source;
-};
-
-struct PlaybackLog
-{
-    Tomahawk::source_ptr source;
-    unsigned int timestamp;
-    unsigned int secsPlayed;
-};
 
 class DLLEXPORT TrackData : public QObject
 {
@@ -68,8 +55,8 @@ public:
     QString toString() const;
     Tomahawk::query_ptr toQuery();
 
-    QString artistSortname() const { return m_artistSortname; }
-    QString trackSortname() const { return m_trackSortname; }
+    const QString& artistSortname() const { return m_artistSortname; }
+    const QString& trackSortname() const { return m_trackSortname; }
 
     QWeakPointer< Tomahawk::TrackData > weakRef() { return m_ownRef; }
     void setWeakRef( QWeakPointer< Tomahawk::TrackData > weakRef ) { m_ownRef = weakRef; }
@@ -91,8 +78,9 @@ public:
     QVariantMap attributes() const { return m_attributes; }
     void setAttributes( const QVariantMap& map ) { m_attributes = map; updateAttributes(); }
 
-    void loadSocialActions();
+    void loadSocialActions( bool force = false );
     QList< Tomahawk::SocialAction > allSocialActions() const;
+    QList< Tomahawk::SocialAction > socialActions( const QString& actionName, const QVariant& value = QVariant(), bool filterDupeSourceNames = false );
     void setAllSocialActions( const QList< Tomahawk::SocialAction >& socialActions );
 
     void loadStats();
@@ -173,9 +161,9 @@ private:
     friend class DatabaseCommand_PlaybackHistory;
 };
 
-}; //ns
+} // namespace Tomahawk
 
-Q_DECLARE_METATYPE( QList<Tomahawk::PlaybackLog> );
-Q_DECLARE_METATYPE( Tomahawk::trackdata_ptr );
+Q_DECLARE_METATYPE( QList<Tomahawk::PlaybackLog> )
+Q_DECLARE_METATYPE( Tomahawk::trackdata_ptr )
 
 #endif // TRACKDATA_H

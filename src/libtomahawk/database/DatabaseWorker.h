@@ -25,10 +25,6 @@
 #include <QList>
 #include <QPointer>
 
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
-#include <qjson/qobjecthelper.h>
-
 #include "DatabaseCommand.h"
 
 namespace Tomahawk
@@ -62,8 +58,6 @@ private:
     Database* m_db;
     QList< Tomahawk::dbcmd_ptr > m_commands;
     int m_outstanding;
-
-    QJson::Serializer m_serializer;
 };
 
 class DatabaseWorkerThread : public QThread
@@ -76,6 +70,13 @@ public:
 
     QPointer< DatabaseWorker > worker() const;
 
+    /**
+     * Waits until the event loop was started.
+     *
+     * Blocking, i.e. do not call from within the DatabaseWorkerThread thread.
+     */
+    void waitForEventLoopStart();
+
 protected:
     void run();
 
@@ -83,6 +84,11 @@ private:
     QPointer< DatabaseWorker > m_worker;
     Database* m_db;
     bool m_mutates;
+
+    /**
+     * Locks until we've started the event loop.
+     */
+    QMutex m_startupMutex;
 };
 
 }

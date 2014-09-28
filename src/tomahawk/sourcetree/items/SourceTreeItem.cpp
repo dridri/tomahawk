@@ -36,6 +36,7 @@ SourceTreeItem::SourceTreeItem( SourcesModel* model, SourceTreeItem* parent, Sou
     , m_parent( parent )
     , m_model( model )
     , m_peerSortValue( peerSortValue )
+    , m_dropType( DropTypesNone )
 {
     connect( AudioEngine::instance(), SIGNAL( started( Tomahawk::result_ptr ) ), SLOT( checkPlayingStatus() ) );
 
@@ -102,21 +103,21 @@ SourceTreeItem::children() const
 
 
 void
-SourceTreeItem::appendChild(SourceTreeItem* item)
+SourceTreeItem::appendChild( SourceTreeItem* item )
 {
     m_children.append( item );
 }
 
 
 void
-SourceTreeItem::insertChild(int index, SourceTreeItem* item)
+SourceTreeItem::insertChild( int index, SourceTreeItem* item )
 {
     m_children.insert( index, item );
 }
 
 
 void
-SourceTreeItem::removeChild(SourceTreeItem* item)
+SourceTreeItem::removeChild( SourceTreeItem* item )
 {
     m_children.removeAll( item );
 }
@@ -151,14 +152,14 @@ SourceTreeItem::icon() const
 
 
 bool
-SourceTreeItem::willAcceptDrag(const QMimeData*) const
+SourceTreeItem::willAcceptDrag( const QMimeData* ) const
 {
     return false;
 }
 
 
 bool
-SourceTreeItem::dropMimeData(const QMimeData*, Qt::DropAction)
+SourceTreeItem::dropMimeData( const QMimeData*, Qt::DropAction )
 {
     return false;
 }
@@ -186,7 +187,7 @@ SourceTreeItem::IDValue() const
 
 
 SourceTreeItem::DropTypes
-SourceTreeItem::supportedDropTypes(const QMimeData* mimeData) const
+SourceTreeItem::supportedDropTypes( const QMimeData* mimeData ) const
 {
     Q_UNUSED( mimeData );
     return DropTypesNone;
@@ -194,7 +195,7 @@ SourceTreeItem::supportedDropTypes(const QMimeData* mimeData) const
 
 
 void
-SourceTreeItem::setDropType(SourceTreeItem::DropType type)
+SourceTreeItem::setDropType( SourceTreeItem::DropType type )
 {
     m_dropType = type;
 }
@@ -222,7 +223,7 @@ SourceTreeItem::customActions() const
 
 
 void
-SourceTreeItem::beginRowsAdded(int from, int to)
+SourceTreeItem::beginRowsAdded( int from, int to )
 {
     emit beginChildRowsAdded( from, to );
 }
@@ -236,7 +237,7 @@ SourceTreeItem::endRowsAdded()
 
 
 void
-SourceTreeItem::beginRowsRemoved(int from, int to)
+SourceTreeItem::beginRowsRemoved( int from, int to )
 {
     emit beginChildRowsRemoved( from, to );
 }
@@ -250,14 +251,40 @@ SourceTreeItem::endRowsRemoved()
 
 
 void
-SourceTreeItem::setRowType(SourcesModel::RowType t)
+SourceTreeItem::setRowType( SourcesModel::RowType t )
 {
     m_type = t;
 }
 
 
 void
-SourceTreeItem::setParentItem(SourceTreeItem* item)
+SourceTreeItem::setParentItem( SourceTreeItem* item )
 {
     m_parent = item;
+}
+
+
+void
+SourceTreeItem::removeFromList()
+{
+    pageDestroyed();
+}
+
+
+void
+SourceTreeItem::pageDestroyed()
+{
+    //FIXME: this seems to be triggered twice for temporary pages
+    model()->removeSourceItemLink( this );
+
+    int idx = parent()->children().indexOf( this );
+    if ( idx < 0 )
+        return;
+
+    parent()->beginRowsRemoved( idx, idx );
+    parent()->removeChild( this );
+    parent()->endRowsRemoved();
+
+    emit removed();
+    deleteLater();
 }

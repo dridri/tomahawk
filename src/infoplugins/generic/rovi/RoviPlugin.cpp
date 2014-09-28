@@ -19,9 +19,9 @@
 
 #include "RoviPlugin.h"
 
+#include "utils/Json.h"
 #include "utils/Logger.h"
-
-#include <qjson/parser.h>
+#include "utils/NetworkAccessManager.h"
 
 #include <QDateTime>
 #include <QNetworkReply>
@@ -127,13 +127,13 @@ RoviPlugin::albumLookupFinished()
 
     Tomahawk::InfoSystem::InfoRequestData requestData = reply->property( "requestData" ).value< Tomahawk::InfoSystem::InfoRequestData >();
 
-    QJson::Parser p;
     bool ok;
-    QVariantMap response = p.parse( reply, &ok ).toMap();
+    QByteArray jsonData = reply->readAll();
+    QVariantMap response = TomahawkUtils::parseJson( jsonData, &ok ).toMap();
 
     if ( !ok || response.isEmpty() || !response.contains( "searchResponse" ) )
     {
-        tLog() << "Error parsing JSON from Rovi!" << p.errorString() << response;
+        tLog() << "Error parsing JSON from Rovi!" << jsonData;
         emit info( requestData, QVariant() );
         return;
     }
@@ -150,7 +150,7 @@ RoviPlugin::albumLookupFinished()
 
     if ( tracks.isEmpty() )
     {
-        tLog() << "Error parsing JSON from Rovi!" << p.errorString() << response;
+        tLog() << "Error parsing JSON from Rovi!" << jsonData;
         emit info( requestData, QVariant() );
     }
 
@@ -159,7 +159,7 @@ RoviPlugin::albumLookupFinished()
     foreach ( const QVariant& track, tracks )
     {
         const QVariantMap trackData = track.toMap();
-        if ( trackData.contains( "title" ) )
+        if ( trackData.contains( "title" ) && !trackData[ "title" ].toString().isEmpty() )
             trackNameList << trackData[ "title" ].toString();
     }
 
@@ -183,7 +183,7 @@ RoviPlugin::makeRequest( QUrl url )
     TomahawkUtils::urlAddQueryItem( url, "sig", generateSig() );
 
     qDebug() << "Rovi request url:" << url.toString();
-    return TomahawkUtils::nam()->get( QNetworkRequest( url ) );
+    return Tomahawk::Utils::nam()->get( QNetworkRequest( url ) );
 }
 
 

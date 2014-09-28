@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2013, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
  *
@@ -52,9 +52,7 @@ Artist::~Artist()
     tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Deleting artist:" << m_name;
     m_ownRef.clear();
 
-#ifndef ENABLE_HEADLESS
     delete m_cover;
-#endif
 }
 
 
@@ -137,9 +135,7 @@ Artist::Artist( unsigned int id, const QString& name )
     , m_infoJobs( 0 )
     , m_chartPosition( 0 )
     , m_chartCount( 0 )
-#ifndef ENABLE_HEADLESS
     , m_cover( 0 )
-#endif
 {
     tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Creating artist:" << id << name;
     m_sortname = DatabaseImpl::sortname( name, true );
@@ -158,9 +154,7 @@ Artist::Artist( const QString& name )
     , m_infoJobs( 0 )
     , m_chartPosition( 0 )
     , m_chartCount( 0 )
-#ifndef ENABLE_HEADLESS
     , m_cover( 0 )
-#endif
 {
     tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Creating artist:" << name;
     m_sortname = DatabaseImpl::sortname( name, true );
@@ -255,6 +249,7 @@ Artist::albums( ModelMode mode, const Tomahawk::collection_ptr& collection ) con
         requestData.caller = infoid();
         requestData.input = QVariant::fromValue< Tomahawk::InfoSystem::InfoStringHash >( artistInfo );
         requestData.type = Tomahawk::InfoSystem::InfoArtistReleases;
+        requestData.allSources = true;
 
         connect( Tomahawk::InfoSystem::InfoSystem::instance(),
                  SIGNAL( info( Tomahawk::InfoSystem::InfoRequestData, QVariant ) ),
@@ -336,7 +331,6 @@ Artist::id() const
 {
     s_idMutex.lockForRead();
     const bool waiting = m_waitingForFuture;
-    unsigned int finalid = m_id;
     s_idMutex.unlock();
 
     if ( waiting )
@@ -344,7 +338,7 @@ Artist::id() const
 //        qDebug() << Q_FUNC_INFO << "Asked for artist ID and NOT loaded yet" << m_name << m_idFuture.isFinished();
         m_idFuture.waitForFinished();
 //        qDebug() << "DONE WAITING:" << m_idFuture.resultCount() << m_idFuture.isResultReadyAt( 0 ) << m_idFuture.isCanceled() << m_idFuture.isFinished() << m_idFuture.isPaused() << m_idFuture.isRunning() << m_idFuture.isStarted();
-        finalid = m_idFuture.result();
+        unsigned int finalid = m_idFuture.result();
 
 //        qDebug() << Q_FUNC_INFO << "Got loaded artist:" << m_name << finalid;
 
@@ -591,7 +585,6 @@ Artist::infoSystemFinished( QString target )
 }
 
 
-#ifndef ENABLE_HEADLESS
 QPixmap
 Artist::cover( const QSize& size, bool forceLoad ) const
 {
@@ -634,10 +627,10 @@ Artist::cover( const QSize& size, bool forceLoad ) const
 
     if ( m_cover && !m_cover->isNull() && !size.isEmpty() )
     {
-        const QString cacheKey = infoid() + "_" + size.width();
+        const QString cacheKey = QString( "%1_%2_%3" ).arg( infoid() ).arg( size.width() ).arg( size.height() );
         QPixmap cover;
 
-        if ( !QPixmapCache::find( cacheKey, cover ) )
+        if ( !QPixmapCache::find( cacheKey, &cover ) )
         {
             cover = m_cover->scaled( size, Qt::KeepAspectRatio, Qt::SmoothTransformation );
             QPixmapCache::insert( cacheKey, cover );
@@ -651,7 +644,6 @@ Artist::cover( const QSize& size, bool forceLoad ) const
     else
         return QPixmap();
 }
-#endif
 
 
 Tomahawk::playlistinterface_ptr

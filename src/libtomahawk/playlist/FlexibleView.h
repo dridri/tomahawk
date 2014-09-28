@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2012, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2012-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -25,12 +25,12 @@
 
 class QStackedWidget;
 
+class TrackDetailView;
 class GridView;
 class TrackView;
 class PlayableModel;
 class PlaylistModel;
 class FilterHeader;
-class ModeHeader;
 
 class DLLEXPORT FlexibleView : public QWidget, public Tomahawk::ViewPage
 {
@@ -86,12 +86,13 @@ private slots:
 
 private:
     FilterHeader* m_header;
-    ModeHeader* m_modeHeader;
     QPixmap m_pixmap;
 
     TrackView* m_trackView;
     TrackView* m_detailedView;
     GridView* m_gridView;
+
+    TrackDetailView* m_detailView;
 
     PlayableModel* m_model;
     QStackedWidget* m_stack;

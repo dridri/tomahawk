@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -20,7 +20,6 @@
 #include "TrackView.h"
 
 #include "ViewHeader.h"
-#include "ViewManager.h"
 #include "PlayableModel.h"
 #include "PlayableProxyModel.h"
 #include "PlayableItem.h"
@@ -28,7 +27,6 @@
 #include "Source.h"
 #include "TomahawkSettings.h"
 #include "audio/AudioEngine.h"
-#include "context/ContextWidget.h"
 #include "widgets/OverlayWidget.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/Closure.h"
@@ -41,7 +39,6 @@
     #include "collection/Collection.h"
     #include "utils/PixmapDelegateFader.h"
 #endif
-
 
 #include <QKeyEvent>
 #include <QPainter>
@@ -62,8 +59,8 @@ TrackView::TrackView( QWidget* parent )
     , m_loadingSpinner( new LoadingSpinner( this ) )
     , m_resizing( false )
     , m_dragging( false )
-    , m_updateContextView( true )
-    , m_alternatingRowColors( true )
+    , m_alternatingRowColors( false )
+    , m_autoExpanding( true )
     , m_contextMenu( new ContextMenu( this ) )
 {
     setFrameShape( QFrame::NoFrame );
@@ -81,7 +78,7 @@ TrackView::TrackView( QWidget* parent )
     setVerticalScrollMode( QAbstractItemView::ScrollPerPixel );
     setRootIsDecorated( false );
     setUniformRowHeights( true );
-    setAlternatingRowColors( true );
+    setAlternatingRowColors( m_alternatingRowColors );
     setAutoResize( false );
 
     setHeader( m_header );
@@ -130,6 +127,9 @@ TrackView::guid() const
 void
 TrackView::setGuid( const QString& newguid )
 {
+    if ( newguid == m_guid )
+        return;
+
     if ( !newguid.isEmpty() )
     {
         tDebug() << Q_FUNC_INFO << "Setting guid on header" << newguid << "for a view with" << m_proxyModel->columnCount() << "columns";
@@ -160,6 +160,9 @@ TrackView::setProxyModel( PlayableProxyModel* model )
         disconnect( m_proxyModel, SIGNAL( rowsInserted( QModelIndex, int, int ) ), this, SLOT( onViewChanged() ) );
         disconnect( m_proxyModel, SIGNAL( rowsInserted( QModelIndex, int, int ) ), this, SLOT( verifySize() ) );
         disconnect( m_proxyModel, SIGNAL( rowsRemoved( QModelIndex, int, int ) ), this, SLOT( verifySize() ) );
+        disconnect( m_proxyModel, SIGNAL( expandRequest( QPersistentModelIndex ) ), this, SLOT( expand( QPersistentModelIndex ) ) );
+        disconnect( m_proxyModel, SIGNAL( selectRequest( QPersistentModelIndex ) ), this, SLOT( select( QPersistentModelIndex ) ) );
+        disconnect( m_proxyModel, SIGNAL( currentIndexChanged( QModelIndex, QModelIndex ) ), this, SLOT( onCurrentIndexChanged( QModelIndex, QModelIndex ) ) );
     }
 
     m_proxyModel = model;
@@ -170,6 +173,9 @@ TrackView::setProxyModel( PlayableProxyModel* model )
     connect( m_proxyModel, SIGNAL( rowsInserted( QModelIndex, int, int ) ), SLOT( onViewChanged() ) );
     connect( m_proxyModel, SIGNAL( rowsInserted( QModelIndex, int, int ) ), SLOT( verifySize() ) );
     connect( m_proxyModel, SIGNAL( rowsRemoved( QModelIndex, int, int ) ), SLOT( verifySize() ) );
+    connect( m_proxyModel, SIGNAL( expandRequest( QPersistentModelIndex ) ), SLOT( expand( QPersistentModelIndex ) ) );
+    connect( m_proxyModel, SIGNAL( selectRequest( QPersistentModelIndex ) ), SLOT( select( QPersistentModelIndex ) ) );
+    connect( m_proxyModel, SIGNAL( currentIndexChanged( QModelIndex, QModelIndex ) ), SLOT( onCurrentIndexChanged( QModelIndex, QModelIndex ) ) );
 
     m_delegate = new PlaylistItemDelegate( this, m_proxyModel );
     QTreeView::setItemDelegate( m_delegate );
@@ -202,6 +208,12 @@ TrackView::setPlaylistItemDelegate( PlaylistItemDelegate* delegate )
 void
 TrackView::setPlayableModel( PlayableModel* model )
 {
+    if ( m_model )
+    {
+        disconnect( m_model, SIGNAL( loadingStarted() ), m_loadingSpinner, SLOT( fadeIn() ) );
+        disconnect( m_model, SIGNAL( loadingFinished() ), m_loadingSpinner, SLOT( fadeOut() ) );
+    }
+
     m_model = model;
 
     if ( m_proxyModel )
@@ -216,7 +228,6 @@ TrackView::setPlayableModel( PlayableModel* model )
     switch( m_proxyModel->style() )
     {
         case PlayableProxyModel::Short:
-        case PlayableProxyModel::ShortWithAvatars:
         case PlayableProxyModel::Large:
             setHeaderHidden( true );
             setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
@@ -225,6 +236,18 @@ TrackView::setPlayableModel( PlayableModel* model )
         default:
             setHeaderHidden( false );
             setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
+    }
+
+    connect( m_model, SIGNAL( loadingStarted() ), m_loadingSpinner, SLOT( fadeIn() ) );
+    connect( m_model, SIGNAL( loadingFinished() ), m_loadingSpinner, SLOT( fadeOut() ) );
+
+    if ( m_model->isLoading() )
+        m_loadingSpinner->fadeIn();
+
+    if ( m_autoExpanding )
+    {
+        expandAll();
+        selectFirstTrack();
     }
 
     onViewChanged();
@@ -256,11 +279,20 @@ TrackView::onModelEmptyCheck()
 
 
 void
+TrackView::onCurrentIndexChanged( const QModelIndex& newIndex, const QModelIndex& oldIndex )
+{
+    if ( selectedIndexes().count() == 1 && currentIndex() == oldIndex )
+    {
+        selectionModel()->select( newIndex, QItemSelectionModel::SelectCurrent );
+        currentChanged( newIndex, oldIndex );
+        setCurrentIndex( newIndex );
+    }
+}
+
+
+void
 TrackView::onViewChanged()
 {
-    if ( m_proxyModel->style() != PlayableProxyModel::Short && m_proxyModel->style() != PlayableProxyModel::Large ) // eventual FIXME?
-        return;
-
     if ( m_timer.isActive() )
         m_timer.stop();
 
@@ -289,6 +321,7 @@ TrackView::onScrollTimeout()
     if ( !max )
         return;
 
+    //FIXME
     for ( int i = left.row(); i <= max; i++ )
     {
         m_proxyModel->updateDetailedInfo( m_proxyModel->index( i, 0 ) );
@@ -335,13 +368,14 @@ TrackView::currentChanged( const QModelIndex& current, const QModelIndex& previo
 {
     QTreeView::currentChanged( current, previous );
 
-    if ( !m_updateContextView )
-        return;
-
     PlayableItem* item = m_model->itemFromIndex( m_proxyModel->mapToSource( current ) );
-    if ( item )
+    if ( item && item->query() )
     {
-        ViewManager::instance()->context()->setQuery( item->query() );
+        emit querySelected( item->query() );
+    }
+    else
+    {
+        emit querySelected( query_ptr() );
     }
 }
 
@@ -419,7 +453,6 @@ TrackView::keyPressEvent( QKeyEvent* event )
 void
 TrackView::onItemResized( const QModelIndex& index )
 {
-    tDebug() << Q_FUNC_INFO;
     m_delegate->updateRowSize( index );
 }
 
@@ -439,8 +472,6 @@ TrackView::resizeEvent( QResizeEvent* event )
     int sortSection = m_header->sortIndicatorSection();
     Qt::SortOrder sortOrder = m_header->sortIndicatorOrder();
 
-//    tDebug() << Q_FUNC_INFO << width();
-
     if ( m_header->checkState() && sortSection >= 0 )
     {
         // restoreState keeps overwriting our previous sort-order
@@ -457,11 +488,49 @@ TrackView::resizeEvent( QResizeEvent* event )
 }
 
 
+bool
+TrackView::eventFilter( QObject* obj, QEvent* event )
+{
+    if ( event->type() == QEvent::DragEnter )
+    {
+        QDragEnterEvent* e = static_cast<QDragEnterEvent*>(event);
+        dragEnterEvent( e );
+        return true;
+    }
+    if ( event->type() == QEvent::DragMove )
+    {
+        QDragMoveEvent* e = static_cast<QDragMoveEvent*>(event);
+        dragMoveEvent( e );
+        return true;
+    }
+    if ( event->type() == QEvent::DragLeave )
+    {
+        QDragLeaveEvent* e = static_cast<QDragLeaveEvent*>(event);
+        dragLeaveEvent( e );
+        return true;
+    }
+    if ( event->type() == QEvent::Drop )
+    {
+        QDropEvent* e = static_cast<QDropEvent*>(event);
+        dropEvent( e );
+        return true;
+    }
+
+    return QObject::eventFilter( obj, event );
+}
+
+
 void
 TrackView::dragEnterEvent( QDragEnterEvent* event )
 {
     tDebug() << Q_FUNC_INFO;
     QTreeView::dragEnterEvent( event );
+
+    if ( !model() || model()->isReadOnly() || model()->isLoading() )
+    {
+        event->ignore();
+        return;
+    }
 
     if ( DropJob::acceptsMimeData( event->mimeData() ) )
     {
@@ -476,10 +545,9 @@ TrackView::dragEnterEvent( QDragEnterEvent* event )
 void
 TrackView::dragMoveEvent( QDragMoveEvent* event )
 {
-    tDebug() << Q_FUNC_INFO;
     QTreeView::dragMoveEvent( event );
 
-    if ( model()->isReadOnly() )
+    if ( !model() || model()->isReadOnly() || model()->isLoading() )
     {
         event->ignore();
         return;
@@ -536,18 +604,19 @@ TrackView::dropEvent( QDropEvent* event )
     {
         tDebug() << "Ignoring accepted event!";
     }
-    else
+    else if ( event->source() != this )
     {
+        // This code shouldn't be required when the PlayableModel properly accepts the incoming drop.
+        // If we remove it, the queue for some reason doesn't accept the drops yet, though.
         if ( DropJob::acceptsMimeData( event->mimeData() ) )
         {
             const QPoint pos = event->pos();
             const QModelIndex index = indexAt( pos );
 
-            tDebug() << Q_FUNC_INFO << "Drop Event accepted at row:" << index.row();
-            event->acceptProposedAction();
-
-            if ( !model()->isReadOnly() )
+            if ( !model()->isReadOnly() && !model()->isLoading() )
             {
+                tDebug() << Q_FUNC_INFO << "Drop Event accepted at row:" << index.row();
+                event->acceptProposedAction();
                 model()->dropMimeData( event->mimeData(), event->proposedAction(), index.row(), 0, index.parent() );
             }
         }
@@ -767,6 +836,9 @@ bool
 TrackView::jumpToCurrentTrack()
 {
     scrollTo( proxyModel()->currentIndex(), QAbstractItemView::PositionAtCenter );
+    selectionModel()->select( QModelIndex(), QItemSelectionModel::SelectCurrent );
+    select( proxyModel()->currentIndex() );
+    selectionModel()->select( proxyModel()->currentIndex(), QItemSelectionModel::SelectCurrent );
     return true;
 }
 
@@ -797,11 +869,16 @@ TrackView::deleteSelectedItems()
 void
 TrackView::verifySize()
 {
-    if ( !autoResize() || !m_proxyModel )
+    if ( !autoResize() || !m_proxyModel || !m_proxyModel->rowCount() )
         return;
 
-    if ( m_proxyModel->rowCount() > 0 )
-        setFixedHeight( m_proxyModel->rowCount() * m_delegate->sizeHint( QStyleOptionViewItem(), m_proxyModel->index( 0, 0 ) ).height() + frameWidth() * 2 );
+    unsigned int height = 0;
+    for ( int i = 0; i < m_proxyModel->rowCount(); i++ )
+    {
+        height += indexRowSizeHint( m_proxyModel->index( i, 0 ) );
+    }
+
+    setFixedHeight( height + contentsMargins().top() + contentsMargins().bottom() );
 }
 
 
@@ -820,4 +897,46 @@ TrackView::setAlternatingRowColors( bool enable )
 {
     m_alternatingRowColors = enable;
     QTreeView::setAlternatingRowColors( enable );
+}
+
+
+void
+TrackView::expand( const QPersistentModelIndex& idx )
+{
+    QTreeView::expand( idx );
+}
+
+
+void
+TrackView::select( const QPersistentModelIndex& idx )
+{
+    if ( selectedIndexes().count() )
+        return;
+
+//    selectionModel()->select( idx, QItemSelectionModel::SelectCurrent );
+    currentChanged( idx, QModelIndex() );
+}
+
+
+void
+TrackView::selectFirstTrack()
+{
+    if ( !m_proxyModel->rowCount() )
+        return;
+    if ( selectedIndexes().count() )
+        return;
+
+    QModelIndex idx = m_proxyModel->index( 0, 0, QModelIndex() );
+    PlayableItem* item = m_model->itemFromIndex( m_proxyModel->mapToSource( idx ) );
+    if ( item->source() )
+    {
+        idx = m_proxyModel->index( 0, 0, idx );
+        item = m_model->itemFromIndex( m_proxyModel->mapToSource( idx ) );
+    }
+
+    if ( item->query() )
+    {
+//        selectionModel()->select( idx, QItemSelectionModel::SelectCurrent );
+        currentChanged( idx, QModelIndex() );
+    }
 }

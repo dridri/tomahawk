@@ -2,6 +2,7 @@
  *
  *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
+ *   Copyright 2013,      Uwe L. Korn  <uwelk@xhochy.com>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -17,25 +18,27 @@
  *   along with Tomahawk. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
 #ifndef TOMAHAWKALBUM_H
 #define TOMAHAWKALBUM_H
 
-#include <QtCore/QObject>
-#include <QtCore/QSharedPointer>
-#ifndef ENABLE_HEADLESS
-    #include <QtGui/QPixmap>
-#endif
+#include <QPixmap>
 #include <QFuture>
 
-#include "Typedefs.h"
-#include "PlaylistInterface.h"
-#include "DllMacro.h"
-#include "collection/Collection.h"
+// Forward Declarations breaking QSharedPointer
+#if QT_VERSION < QT_VERSION_CHECK( 5, 0, 0 )
+    #include "collection/Collection.h"
+#endif
+
 #include "infosystem/InfoSystem.h"
+#include "DllMacro.h"
+#include "Typedefs.h"
 
 
 namespace Tomahawk
 {
+
+class AlbumPrivate;
 class IdThreadWorker;
 
 class DLLEXPORT Album : public QObject
@@ -51,20 +54,18 @@ public:
     virtual ~Album();
 
     unsigned int id() const;
-    QString name() const { return m_name; }
-    QString sortname() const { return m_sortname; }
+    QString name() const;
+    QString sortname() const;
 
     artist_ptr artist() const;
-#ifndef ENABLE_HEADLESS
     QPixmap cover( const QSize& size, bool forceLoad = true ) const;
-#endif
-    bool coverLoaded() const { return m_coverLoaded; }
+    bool coverLoaded() const;
 
     QList<Tomahawk::query_ptr> tracks( ModelMode mode = Mixed, const Tomahawk::collection_ptr& collection = Tomahawk::collection_ptr() );
     Tomahawk::playlistinterface_ptr playlistInterface( ModelMode mode, const Tomahawk::collection_ptr& collection = Tomahawk::collection_ptr() );
 
-    QWeakPointer< Tomahawk::Album > weakRef() { return m_ownRef; }
-    void setWeakRef( QWeakPointer< Tomahawk::Album > weakRef ) { m_ownRef = weakRef; }
+    QWeakPointer< Tomahawk::Album > weakRef();
+    void setWeakRef( QWeakPointer< Tomahawk::Album > weakRef );
 
     void loadId( bool autoCreate );
 
@@ -76,6 +77,9 @@ signals:
     void updated();
     void coverChanged();
 
+protected:
+    QScopedPointer<AlbumPrivate> d_ptr;
+
 private slots:
     void onTracksLoaded( Tomahawk::ModelMode mode, const Tomahawk::collection_ptr& collection );
 
@@ -83,30 +87,10 @@ private slots:
     void infoSystemFinished( const QString& target );
 
 private:
+    Q_DECLARE_PRIVATE( Album )
     Q_DISABLE_COPY( Album )
     QString infoid() const;
     void setIdFuture( QFuture<unsigned int> future );
-
-    mutable bool m_waitingForId;
-    mutable QFuture<unsigned int> m_idFuture;
-    mutable unsigned int m_id;
-    QString m_name;
-    QString m_sortname;
-
-    artist_ptr m_artist;
-
-    mutable bool m_coverLoaded;
-    mutable bool m_coverLoading;
-    mutable QString m_uuid;
-
-    mutable QByteArray m_coverBuffer;
-#ifndef ENABLE_HEADLESS
-    mutable QPixmap* m_cover;
-#endif
-
-    QHash< Tomahawk::ModelMode, QHash< Tomahawk::collection_ptr, Tomahawk::playlistinterface_ptr > > m_playlistInterface;
-
-    QWeakPointer< Tomahawk::Album > m_ownRef;
 
     static QHash< QString, album_wptr > s_albumsByName;
     static QHash< unsigned int, album_wptr > s_albumsById;

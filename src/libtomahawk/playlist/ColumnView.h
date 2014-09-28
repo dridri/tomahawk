@@ -2,6 +2,7 @@
  *
  *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
+ *   Copyright 2014,      Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -68,9 +69,6 @@ public:
 
     virtual bool jumpToCurrentTrack();
 
-    bool updatesContextView() const { return m_updateContextView; }
-    void setUpdatesContextView( bool b ) { m_updateContextView = b; }
-
 public slots:
     void onItemActivated( const QModelIndex& index );
 
@@ -97,7 +95,11 @@ private slots:
     void onCustomContextMenu( const QPoint& pos );
     void onMenuTriggered( int action );
 
+private slots:
+    void fixScrollBars();
+
 private:
+
     OverlayWidget* m_overlay;
     TreeModel* m_model;
     TreeProxyModel* m_proxyModel;
@@ -105,10 +107,10 @@ private:
     AnimatedSpinner* m_loadingSpinner;
     ColumnViewPreviewWidget* m_previewWidget;
 
-    bool m_updateContextView;
-
     QModelIndex m_contextMenuIndex;
     Tomahawk::ContextMenu* m_contextMenu;
+
+    int m_scrollDelta;
 
     QString m_emptyTip;
     QTimer m_timer;

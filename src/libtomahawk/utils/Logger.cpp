@@ -41,6 +41,7 @@ using namespace std;
 ofstream logfile;
 static int s_threshold = -1;
 QMutex s_mutex;
+bool shutdownInProgress = false;
 
 namespace Logger
 {
@@ -77,11 +78,26 @@ log( const char *msg, unsigned int debugLevel, bool toDisk = true )
             logfile << "TSQLQUERY: ";
         #endif
 
-        logfile << QDate::currentDate().toString().toUtf8().data()
-                << " - "
-                << QTime::currentTime().toString().toUtf8().data()
-                << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
-                << msg << endl;
+        if ( shutdownInProgress )
+        {
+            // Do not use locales anymore in shutdown
+            logfile << QDate::currentDate().day() << "."
+                    << QDate::currentDate().month() << "."
+                    << QDate::currentDate().year() << " - "
+                    << QTime::currentTime().hour() << ":"
+                    << QTime::currentTime().minute() << ":"
+                    << QTime::currentTime().second()
+                    << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
+                    << msg << endl;
+        }
+        else
+        {
+            logfile << QDate::currentDate().toString().toUtf8().data()
+                    << " - "
+                    << QTime::currentTime().toString().toUtf8().data()
+                    << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
+                    << msg << endl;
+        }
 
         logfile.flush();
     }
@@ -90,9 +106,20 @@ log( const char *msg, unsigned int debugLevel, bool toDisk = true )
     {
         QMutexLocker lock( &s_mutex );
 
-        cout << QTime::currentTime().toString().toUtf8().data()
-             << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
-             << msg << endl;
+        if ( shutdownInProgress )
+        {
+            cout << QTime::currentTime().hour() << ":"
+                 << QTime::currentTime().minute() << ":"
+                 << QTime::currentTime().second()
+                 << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
+                 << msg << endl;
+        }
+        else
+        {
+            cout << QTime::currentTime().toString().toUtf8().data()
+                 << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
+                 << msg << endl;
+        }
 
         cout.flush();
     }
@@ -147,27 +174,28 @@ logFile()
 void
 setupLogfile()
 {
-    if ( QFileInfo( logFile().toLocal8Bit() ).size() > LOGFILE_SIZE )
+    if ( QFileInfo( logFile() ).size() > LOGFILE_SIZE )
     {
         QByteArray lc;
         {
-            QFile f( logFile().toLocal8Bit() );
+            QFile f( logFile() );
             f.open( QIODevice::ReadOnly | QIODevice::Text );
+            f.seek( f.size() - ( LOGFILE_SIZE - ( LOGFILE_SIZE / 4 ) ) );
             lc = f.readAll();
             f.close();
         }
 
-        QFile::remove( logFile().toLocal8Bit() );
+        QFile::remove( logFile() );
 
         {
-            QFile f( logFile().toLocal8Bit() );
+            QFile f( logFile() );
             f.open( QIODevice::WriteOnly | QIODevice::Text );
-            f.write( lc.right( LOGFILE_SIZE - ( LOGFILE_SIZE / 4 ) ) );
+            f.write( lc );
             f.close();
         }
     }
 
-    logfile.open( logFile().toLocal8Bit(), ios::app );
+    logfile.open( logFile().toUtf8().constData(), ios::app );
 #if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
     qInstallMessageHandler( TomahawkLogHandler );
 #else
@@ -191,3 +219,10 @@ TLog::~TLog()
     log( m_msg.toUtf8().data(), m_debugLevel );
 }
 
+
+void
+tLogNotifyShutdown()
+{
+    QMutexLocker locker( &s_mutex );
+    shutdownInProgress = true;
+}

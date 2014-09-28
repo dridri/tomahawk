@@ -68,10 +68,24 @@ GenericPageItem::icon() const
 
 
 bool
-GenericPageItem::willAcceptDrag(const QMimeData* data) const
+GenericPageItem::willAcceptDrag( const QMimeData* data ) const
 {
-    Q_UNUSED( data );
-    return false;
+    if ( m_get() == NULL )
+    {
+        return false;
+    }
+    return m_get()->willAcceptDrag(data);
+}
+
+
+bool
+GenericPageItem::dropMimeData( const QMimeData* data, Qt::DropAction action )
+{
+    if ( m_get() == NULL )
+    {
+        return false;
+    }
+    return m_get()->dropMimeData(data, action);
 }
 
 
@@ -99,6 +113,20 @@ GenericPageItem::isBeingPlayed() const
     }
 
     return false;
+}
+
+
+void
+GenericPageItem::setDeletable( bool deletable )
+{
+    if ( deletable )
+    {
+        setRowType( SourcesModel::TemporaryPage );
+    }
+    else
+    {
+        setRowType( SourcesModel::GenericPage );
+    }
 }
 
 

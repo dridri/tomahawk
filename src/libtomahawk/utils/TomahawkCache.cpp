@@ -29,6 +29,7 @@
 using namespace TomahawkUtils;
 
 Cache*Cache::s_instance = 0;
+const int Cache::s_cacheVersion = 1;
 
 
 Cache* Cache::instance()
@@ -45,6 +46,12 @@ Cache::Cache()
     , m_cacheBaseDir( TomahawkSettings::instance()->storageCacheLocation() + "/GenericCache/" )
     , m_cacheManifest( m_cacheBaseDir + "cachemanifest.ini", QSettings::IniFormat )
 {
+    if ( TomahawkSettings::instance()->genericCacheVersion() < s_cacheVersion )
+    {
+        TomahawkUtils::removeDirectory( m_cacheBaseDir );
+        TomahawkSettings::instance()->setGenericCacheVersion( s_cacheVersion );
+    }
+
     m_pruneTimer.setInterval( 300000 );
     m_pruneTimer.setSingleShot( false );
     connect( &m_pruneTimer, SIGNAL( timeout() ), SLOT( pruneTimerFired() ) );
@@ -79,7 +86,7 @@ Cache::pruneTimerFired()
             if ( data.maxAge < currentMSecsSinceEpoch )
             {
                 cached_settings.remove( key );
-                tLog() << Q_FUNC_INFO << "Removed stale entry: " << client_identifier << key;
+                tLog() << Q_FUNC_INFO << "Removed stale entry:" << client_identifier << key;
             }
         }
         cached_settings.sync();

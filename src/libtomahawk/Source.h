@@ -25,12 +25,12 @@
 #include <QSharedPointer>
 #include <QVariantMap>
 
-#include "Typedefs.h"
 #include "accounts/AccountManager.h"
+#include "collection/Collection.h"
 #include "network/DBSyncConnectionState.h"
 #include "utils/TomahawkUtils.h"
-
 #include "DllMacro.h"
+#include "Typedefs.h"
 
 class ControlConnection;
 class DBSyncConnection;
@@ -80,9 +80,7 @@ public:
     QString dbFriendlyName() const;
     void setDbFriendlyName( const QString& dbFriendlyName );
 
-#ifndef ENABLE_HEADLESS
-    QPixmap avatar( TomahawkUtils::ImageMode style = TomahawkUtils::Original, const QSize& size = QSize() );
-#endif
+    QPixmap avatar( TomahawkUtils::ImageMode style = TomahawkUtils::Original, const QSize& size = QSize(), bool defaultAvatarFallback = false );
 
     collection_ptr dbCollection() const;
     QList< Tomahawk::collection_ptr > collections() const;
@@ -142,7 +140,7 @@ private slots:
 
     void handleDisconnect( Tomahawk::Accounts::Account*, Tomahawk::Accounts::AccountManager::DisconnectReason reason );
     void setOffline();
-    void setOnline();
+    void setOnline( bool force = false );
 
     void onStateChanged( Tomahawk::DBSyncConnectionState newstate, Tomahawk::DBSyncConnectionState oldstate, const QString& info );
 

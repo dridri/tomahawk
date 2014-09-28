@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -241,10 +241,6 @@ OverlayWidget::paintEvent( QPaintEvent* event )
     }
 
     p.setFont( f );
-#ifdef Q_OS_MAC
     p.setPen( Qt::gray );
-#else
-    p.setPen( palette().text().color().lighter( 100 ) );
-#endif
     p.drawText( r.adjusted( 8, 8, -8, -8 ), text(), to );
 }

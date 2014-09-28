@@ -20,6 +20,7 @@
 
 #include "collection/Collection.h"
 #include "network/Servent.h"
+#include "utils/Json.h"
 #include "utils/Logger.h"
 
 #include "DatabaseImpl.h"
@@ -27,9 +28,6 @@
 #include "Source.h"
 #include "TomahawkSqlQuery.h"
 #include "Track.h"
-
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
 
 #include <QSqlQuery>
 
@@ -150,8 +148,7 @@ DatabaseCommand_SetPlaylistRevision::exec( DatabaseImpl* lib )
     }
 
     QVariantList vlist = m_orderedguids;
-    QJson::Serializer ser;
-    const QByteArray entries = ser.serialize( vlist );
+    const QByteArray entries = TomahawkUtils::toJson( vlist );
 
     // add any new items:
     TomahawkSqlQuery adde = lib->newquery();
@@ -266,8 +263,7 @@ DatabaseCommand_SetPlaylistRevision::exec( DatabaseImpl* lib )
         if ( query_entries.next() )
         {
             bool ok;
-            QJson::Parser parser;
-            QVariant v = parser.parse( query_entries.value( 0 ).toByteArray(), &ok );
+            QVariant v = TomahawkUtils::parseJson( query_entries.value( 0 ).toByteArray(), &ok );
             Q_ASSERT( ok && v.type() == QVariant::List ); //TODO
 
             m_previous_rev_orderedguids = v.toStringList();
@@ -277,6 +273,7 @@ DatabaseCommand_SetPlaylistRevision::exec( DatabaseImpl* lib )
     {
         tDebug() << "Not updating current revision, optimistic locking fail" << currentRevision << m_oldrev;
 
+        // This will fail if we run two SetPlaylistRevisions commands on the same playlist concurrently
         Q_ASSERT( !source()->isLocal() );
     }
 }
@@ -289,7 +286,7 @@ DatabaseCommand_SetPlaylistRevision::setAddedentriesV( const QVariantList& vlist
     foreach( const QVariant& v, vlist )
     {
         PlaylistEntry* pep = new PlaylistEntry;
-        QJson::QObjectHelper::qvariant2qobject( v.toMap(), pep );
+        TomahawkUtils::qvariant2qobject( v.toMap(), pep );
 
         if ( pep->isValid() )
             m_addedentries << plentry_ptr( pep );
@@ -306,7 +303,7 @@ DatabaseCommand_SetPlaylistRevision::addedentriesV() const
         if ( !pe->isValid() )
             continue;
 
-        QVariant v = QJson::QObjectHelper::qobject2qvariant( pe.data() );
+        QVariant v = TomahawkUtils::qobject2qvariant( pe.data() );
         vlist << v;
     }
     return vlist;

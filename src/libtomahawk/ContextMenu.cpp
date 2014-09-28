@@ -44,6 +44,8 @@ ContextMenu::ContextMenu( QWidget* parent )
     , m_sources_sigmap( 0 )
     , m_loveAction( 0 )
 {
+    setFont( TomahawkUtils::systemFont() );
+
     m_sigmap = new QSignalMapper( this );
     connect( m_sigmap, SIGNAL( mapped( int ) ), SLOT( onTriggered( int ) ) );
 
@@ -118,10 +120,10 @@ ContextMenu::setQueries( const QList<Tomahawk::query_ptr>& queries )
     m_queries << queries;
 
     if ( m_supportedActions & ActionPlay && itemCount() == 1 )
-        m_sigmap->setMapping( addAction( tr( "&Play" ) ), ActionPlay );
+        m_sigmap->setMapping( addAction( ImageRegistry::instance()->icon( RESPATH "images/play.svg" ), tr( "&Play" ) ), ActionPlay );
 
     if ( m_supportedActions & ActionQueue )
-        m_sigmap->setMapping( addAction( tr( "Add to &Queue" ) ), ActionQueue );
+        m_sigmap->setMapping( addAction( ImageRegistry::instance()->icon( RESPATH "images/queue.svg" ), tr( "Add to &Queue" ) ), ActionQueue );
 
     if ( m_supportedActions & ActionPlaylist )
     {
@@ -134,11 +136,11 @@ ContextMenu::setQueries( const QList<Tomahawk::query_ptr>& queries )
         m_playlists_sigmap = new QSignalMapper( this );
 
         // Build the menu listing all available playlists
-        QMenu* playlistMenu = addMenu( tr( "Add to &Playlist" ) );
+        QMenu* playlistMenu = addMenu( ImageRegistry::instance()->icon( RESPATH "images/playlist-icon.svg" ), tr( "Add to &Playlist" ) );
         for ( int i = 0; i < m_playlists.length(); ++i )
         {
             QAction* action = new QAction( m_playlists.at( i )->title() , this );
-            playlistMenu->addAction(action);
+            playlistMenu->addAction( action );
             m_playlists_sigmap->setMapping( action, i );
             connect( action, SIGNAL( triggered() ), m_playlists_sigmap, SLOT( map() ) );
         }
@@ -155,7 +157,7 @@ ContextMenu::setQueries( const QList<Tomahawk::query_ptr>& queries )
             m_sources_sigmap->deleteLater();
         m_sources_sigmap = new QSignalMapper( this );
 
-        QMenu* sourcesMenu = addMenu( tr( "Send to &Friend" ) );
+        QMenu* sourcesMenu = addMenu( ImageRegistry::instance()->icon( RESPATH "images/share.svg" ), tr( "Send to &Friend" ) );
         for ( int i = 0; i < m_sources.length(); ++i )
         {
             QAction* action = new QAction( m_sources.at( i )->friendlyName(), this );
@@ -399,18 +401,16 @@ ContextMenu::addToQueue()
 {
     foreach ( const query_ptr& query, m_queries )
     {
-        ViewManager::instance()->queue()->model()->appendQuery( query );
+        ViewManager::instance()->queue()->trackView()->model()->appendQuery( query );
     }
     foreach ( const artist_ptr& artist, m_artists )
     {
-        ViewManager::instance()->queue()->model()->appendArtist( artist );
+        ViewManager::instance()->queue()->trackView()->model()->appendArtist( artist );
     }
     foreach ( const album_ptr& album, m_albums )
     {
-        ViewManager::instance()->queue()->model()->appendAlbum( album );
+        ViewManager::instance()->queue()->trackView()->model()->appendAlbum( album );
     }
-
-    ViewManager::instance()->showQueue();
 }
 
 

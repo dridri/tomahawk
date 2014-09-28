@@ -19,7 +19,7 @@
 #ifndef HATCHET_ACCOUNT_H
 #define HATCHET_ACCOUNT_H
 
-
+#include "TomahawkPlugin.h"
 #include <accounts/Account.h>
 #include <accounts/AccountDllMacro.h>
 
@@ -40,20 +40,19 @@ class ACCOUNTDLLEXPORT HatchetAccountFactory : public AccountFactory
 {
     Q_OBJECT
     Q_INTERFACES( Tomahawk::Accounts::AccountFactory )
+    Q_PLUGIN_METADATA( IID "org.tomahawk-player.Player.AccountFactory" )
+
 public:
     HatchetAccountFactory();
     virtual ~HatchetAccountFactory();
 
     virtual QString factoryId() const { return "hatchetaccount"; }
     virtual QString prettyName() const { return "Hatchet"; }
-    virtual QString description() const { return tr( "Connect to your Hatchet account" ); }
+    virtual QString description() const { return tr( "Connect to Hatchet to capture your playback data, sync your playlists to Android and more." ); }
     virtual bool isUnique() const { return true; }
-    AccountTypes types() const { return AccountTypes( SipType ); };
+    AccountTypes types() const { return AccountTypes( SipType ); }
 //    virtual bool allowUserCreation() const { return false; }
-#ifndef ENABLE_HEADLESS
     virtual QPixmap icon() const;
-#endif
-
 
     virtual Account* createAccount ( const QString& pluginId = QString() );
 };
@@ -80,43 +79,43 @@ public:
     void setConnectionState( Account::ConnectionState connectionState );
     ConnectionState connectionState() const;
 
-
     virtual Tomahawk::InfoSystem::InfoPluginPtr infoPlugin() { return Tomahawk::InfoSystem::InfoPluginPtr(); }
-    SipPlugin* sipPlugin();
+    SipPlugin* sipPlugin( bool create = true );
 
     AccountConfigWidget* configurationWidget();
     QWidget* aclWidget() { return 0; }
 
     QString username() const;
 
-    void fetchAccessTokens( const QString& type = "dreamcatcher" );
-
-    QString authUrlForService( const Service& service ) const;
+    void fetchAccessToken( const QString& type = "dreamcatcher" );
 
 signals:
-    void authError( QString error );
+    void authError( QString error, int statusCode, const QVariantMap );
     void deauthenticated();
-    void accessTokensFetched();
+    void accessTokenFetched();
 
 private slots:
     void onPasswordLoginFinished( QNetworkReply*, const QString& username );
-    void onFetchAccessTokensFinished();
-    void authUrlDiscovered( Tomahawk::Accounts::HatchetAccount::Service service, const QString& authUrl );
+    void onFetchAccessTokenFinished( QNetworkReply*, const QString& type );
 
 private:
-    QByteArray authToken() const;
-    uint authTokenExpiration() const;
+    QByteArray refreshToken() const;
+    uint refreshTokenExpiration() const;
+
+    QByteArray mandellaAccessToken() const;
+    uint mandellaAccessTokenExpiration() const;
+
+    QByteArray mandellaTokenType() const;
 
     void loginWithPassword( const QString& username, const QString& password, const QString &otp );
 
     QVariantMap parseReply( QNetworkReply* reply, bool& ok ) const;
 
-    QWeakPointer<HatchetAccountConfig> m_configWidget;
+    QPointer<HatchetAccountConfig> m_configWidget;
 
     Account::ConnectionState m_state;
 
-    QWeakPointer< HatchetSipPlugin > m_tomahawkSipPlugin;
-    QHash< Service, QString > m_extraAuthUrls;
+    QPointer< HatchetSipPlugin > m_tomahawkSipPlugin;
 
     static HatchetAccount* s_instance;
     friend class HatchetAccountConfig;

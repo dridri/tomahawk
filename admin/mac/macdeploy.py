@@ -1,5 +1,5 @@
 #!/usr/bin/python
-#  This file is part of Tomahawk. 
+#  This file is part of Tomahawk.
 #  It was inspired in large part by the macdeploy script in Clementine.
 #
 #  Clementine is free software: you can redistribute it and/or modify
@@ -26,162 +26,162 @@ FRAMEWORK_SEARCH_PATH=[
     os.path.join(os.environ['HOME'], 'Library/Frameworks')
 ]
 
-LIBRARY_SEARCH_PATH=['/usr/local/lib', '/usr/local/Cellar/gettext/0.18.1.1/lib', '.']
+LIBRARY_SEARCH_PATH=['/usr/local/lib', '/usr/local/Cellar/gettext/0.19.2/lib', '.']
 
 VLC_PLUGINS=[
-  'libaccess_attachment_plugin.dylib',
-  #'libaccess_avio_plugin.dylib',
-  #'libaccess_fake_plugin.dylib',
-  'libaccess_ftp_plugin.dylib',
-  'libaccess_http_plugin.dylib',
-  'libaccess_imem_plugin.dylib',
-  #'libaccess_mmap_plugin.dylib',
-  'libaccess_mms_plugin.dylib',
-  'libaccess_realrtsp_plugin.dylib',
-  'libaccess_tcp_plugin.dylib',
-  'libaccess_udp_plugin.dylib',
-  'libcdda_plugin.dylib',
-  'libfilesystem_plugin.dylib',
-  'libqtcapture_plugin.dylib',
-  'librtp_plugin.dylib',
-  'libzip_plugin.dylib',
-  'libaccess_output_dummy_plugin.dylib',
-  'libaccess_output_file_plugin.dylib',
-  'libaccess_output_http_plugin.dylib',
-  'libaccess_output_shout_plugin.dylib',
-  'libaccess_output_udp_plugin.dylib',
-  'liba52tofloat32_plugin.dylib',
-  'liba52tospdif_plugin.dylib',
-  'libaudio_format_plugin.dylib',
-  'libaudiobargraph_a_plugin.dylib',
-  'libchorus_flanger_plugin.dylib',
-  'libconverter_fixed_plugin.dylib',
-  'libdolby_surround_decoder_plugin.dylib',
-  'libdtstofloat32_plugin.dylib',
-  'libdtstospdif_plugin.dylib',
-  'libequalizer_plugin.dylib',
-  'libheadphone_channel_mixer_plugin.dylib',
-  'libmono_plugin.dylib',
-  'libmpgatofixed32_plugin.dylib',
-  'libnormvol_plugin.dylib',
-  'libparam_eq_plugin.dylib',
-  'libscaletempo_plugin.dylib',
-  'libsimple_channel_mixer_plugin.dylib',
-  'libspatializer_plugin.dylib',
-  'libtrivial_channel_mixer_plugin.dylib',
-  'libugly_resampler_plugin.dylib',
-  'libfloat32_mixer_plugin.dylib',
+  'access/libattachment_plugin.dylib',
+  #'access/libaccess_avio_plugin.dylib',
+  #'access/libaccess_fake_plugin.dylib',
+  'access/libftp_plugin.dylib',
+  'access/libhttp_plugin.dylib',
+  'access/libimem_plugin.dylib',
+  #'access/libaccess_mmap_plugin.dylib',
+  'access/libaccess_mms_plugin.dylib',
+  'access/libaccess_realrtsp_plugin.dylib',
+  'access/libtcp_plugin.dylib',
+  'access/libudp_plugin.dylib',
+  'access/libcdda_plugin.dylib',
+  'access/libfilesystem_plugin.dylib',
+  'access/libqtcapture_plugin.dylib',
+  'access/librtp_plugin.dylib',
+  'access/libzip_plugin.dylib',
+  'access_output/libaccess_output_dummy_plugin.dylib',
+  'access_output/libaccess_output_file_plugin.dylib',
+  'access_output/libaccess_output_http_plugin.dylib',
+  'access_output/libaccess_output_shout_plugin.dylib',
+  'access_output/libaccess_output_udp_plugin.dylib',
+  'audio_filter/liba52tofloat32_plugin.dylib',
+  'audio_filter/liba52tospdif_plugin.dylib',
+  'audio_filter/libaudio_format_plugin.dylib',
+  'audio_filter/libaudiobargraph_a_plugin.dylib',
+  'audio_filter/libchorus_flanger_plugin.dylib',
+  #'libconverter_fixed_plugin.dylib',
+  'audio_filter/libdolby_surround_decoder_plugin.dylib',
+  'audio_filter/libdtstofloat32_plugin.dylib',
+  'audio_filter/libdtstospdif_plugin.dylib',
+  'audio_filter/libequalizer_plugin.dylib',
+  'audio_filter/libheadphone_channel_mixer_plugin.dylib',
+  'audio_filter/libmono_plugin.dylib',
+  'audio_filter/libmpgatofixed32_plugin.dylib',
+  'audio_filter/libnormvol_plugin.dylib',
+  'audio_filter/libparam_eq_plugin.dylib',
+  'audio_filter/libscaletempo_plugin.dylib',
+  'audio_filter/libsimple_channel_mixer_plugin.dylib',
+  'audio_filter/libspatializer_plugin.dylib',
+  'audio_filter/libtrivial_channel_mixer_plugin.dylib',
+  'audio_filter/libugly_resampler_plugin.dylib',
+  'audio_mixer/libfloat_mixer_plugin.dylib',
   #'libspdif_mixer_plugin.dylib',
   #'libtrivial_mixer_plugin.dylib',
-  'libaout_file_plugin.dylib',
-  'libauhal_plugin.dylib',
-  'liba52_plugin.dylib',
-  'libadpcm_plugin.dylib',
-  'libaes3_plugin.dylib',
-  'libaraw_plugin.dylib',
-  'libavcodec_plugin.dylib',
-  'libcc_plugin.dylib',
-  'libcdg_plugin.dylib',
-  'libdts_plugin.dylib',
-  'libfaad_plugin.dylib',
+  #'libaout_file_plugin.dylib',
+  'audio_output/libauhal_plugin.dylib',
+  'codec/liba52_plugin.dylib',
+  'codec/libadpcm_plugin.dylib',
+  'codec/libaes3_plugin.dylib',
+  'codec/libaraw_plugin.dylib',
+  'codec/libavcodec_plugin.dylib',
+  'codec/libcc_plugin.dylib',
+  'codec/libcdg_plugin.dylib',
+  'codec/libdts_plugin.dylib',
+  'codec/libfaad_plugin.dylib',
   #'libfake_plugin.dylib',
-  'libflac_plugin.dylib',
-  'libfluidsynth_plugin.dylib',
+  'codec/libflac_plugin.dylib',
+  #'libfluidsynth_plugin.dylib',
   #'libinvmem_plugin.dylib',
-  'liblpcm_plugin.dylib',
-  'libmpeg_audio_plugin.dylib',
-  'libpng_plugin.dylib',
-  'librawvideo_plugin.dylib',
-  'libspeex_plugin.dylib',
-  'libspudec_plugin.dylib',
-  'libtheora_plugin.dylib',
-  'libtwolame_plugin.dylib',
-  'libvorbis_plugin.dylib',
-  'libgestures_plugin.dylib',
-  'libhotkeys_plugin.dylib',
-  'libmotion_plugin.dylib',
-  'libnetsync_plugin.dylib',
+  'codec/liblpcm_plugin.dylib',
+  'codec/libmpeg_audio_plugin.dylib',
+  'codec/libpng_plugin.dylib',
+  'codec/librawvideo_plugin.dylib',
+  'codec/libspeex_plugin.dylib',
+  'codec/libspudec_plugin.dylib',
+  'codec/libtheora_plugin.dylib',
+  'codec/libtwolame_plugin.dylib',
+  'codec/libvorbis_plugin.dylib',
+  #'control/libgestures_plugin.dylib',
+  #'libhotkeys_plugin.dylib',
+  #'libmotion_plugin.dylib',
+  #'libnetsync_plugin.dylib',
   #'libsignals_plugin.dylib',
-  'libaiff_plugin.dylib',
-  'libasf_plugin.dylib',
-  'libau_plugin.dylib',
+  'demux/libaiff_plugin.dylib',
+  'demux/libasf_plugin.dylib',
+  'demux/libau_plugin.dylib',
   #'libavformat_plugin.dylib',
-  'libavi_plugin.dylib',
-  'libdemux_cdg_plugin.dylib',
-  'libdemuxdump_plugin.dylib',
-  'libdirac_plugin.dylib',
-  'libes_plugin.dylib',
-  'libflacsys_plugin.dylib',
-  'liblive555_plugin.dylib',
-  'libmkv_plugin.dylib',
-  'libmod_plugin.dylib',
-  'libmp4_plugin.dylib',
-  'libmpc_plugin.dylib',
-  'libmpgv_plugin.dylib',
-  'libnsc_plugin.dylib',
-  'libnsv_plugin.dylib',
-  'libnuv_plugin.dylib',
-  'libogg_plugin.dylib',
-  'libplaylist_plugin.dylib',
-  'libps_plugin.dylib',
-  'libpva_plugin.dylib',
-  'librawaud_plugin.dylib',
-  'librawdv_plugin.dylib',
-  'librawvid_plugin.dylib',
-  'libreal_plugin.dylib',
-  'libsmf_plugin.dylib',
-  'libts_plugin.dylib',
-  'libtta_plugin.dylib',
-  'libty_plugin.dylib',
-  'libvc1_plugin.dylib',
-  'libvoc_plugin.dylib',
-  'libwav_plugin.dylib',
-  'libxa_plugin.dylib',
-  'libfolder_plugin.dylib',
-  'libtaglib_plugin.dylib',
-  'libaudioscrobbler_plugin.dylib',
-  'libdummy_plugin.dylib',
-  'libexport_plugin.dylib',
-  'libfreetype_plugin.dylib',
-  'libgnutls_plugin.dylib',
-  'liblogger_plugin.dylib',
-  'liblua_plugin.dylib',
-  'libosd_parser_plugin.dylib',
-  'libquartztext_plugin.dylib',
-  'libstats_plugin.dylib',
-  'libvod_rtsp_plugin.dylib',
-  'libxml_plugin.dylib',
+  'demux/libavi_plugin.dylib',
+  'demux/libdemux_cdg_plugin.dylib',
+  'demux/libdemuxdump_plugin.dylib',
+  'demux/libdiracsys_plugin.dylib',
+  'demux/libes_plugin.dylib',
+  'demux/libflacsys_plugin.dylib',
+  'access/liblive555_plugin.dylib',
+  'demux/libmkv_plugin.dylib',
+  'demux/libmod_plugin.dylib',
+  'demux/libmp4_plugin.dylib',
+  'demux/libmpc_plugin.dylib',
+  'demux/libmpgv_plugin.dylib',
+  'demux/libnsc_plugin.dylib',
+  'demux/libnsv_plugin.dylib',
+  'demux/libnuv_plugin.dylib',
+  'demux/libogg_plugin.dylib',
+  'demux/libplaylist_plugin.dylib',
+  'demux/libps_plugin.dylib',
+  'demux/libpva_plugin.dylib',
+  'demux/librawaud_plugin.dylib',
+  'demux/librawdv_plugin.dylib',
+  'demux/librawvid_plugin.dylib',
+  'demux/libreal_plugin.dylib',
+  'demux/libsmf_plugin.dylib',
+  'demux/libts_plugin.dylib',
+  'demux/libtta_plugin.dylib',
+  'demux/libty_plugin.dylib',
+  'demux/libvc1_plugin.dylib',
+  'demux/libvoc_plugin.dylib',
+  'demux/libwav_plugin.dylib',
+  'demux/libxa_plugin.dylib',
+  'meta_engine/libfolder_plugin.dylib',
+  'meta_engine/libtaglib_plugin.dylib',
+  #'libaudioscrobbler_plugin.dylib',
+  'control/libdummy_plugin.dylib',
+  'misc/libexport_plugin.dylib',
+  #'libfreetype_plugin.dylib',
+  #'libgnutls_plugin.dylib',
+  'misc/liblogger_plugin.dylib',
+  'lua/liblua_plugin.dylib',
+  #'libosd_parser_plugin.dylib',
+  #'libquartztext_plugin.dylib',
+  #'libstats_plugin.dylib',
+  'misc/libvod_rtsp_plugin.dylib',
+  'misc/libxml_plugin.dylib',
   #'libxtag_plugin.dylib',
-  'libi420_rgb_mmx_plugin.dylib',
-  'libi420_yuy2_mmx_plugin.dylib',
-  'libi422_yuy2_mmx_plugin.dylib',
-  'libmemcpymmx_plugin.dylib',
-  'libmemcpymmxext_plugin.dylib',
-  'libmux_asf_plugin.dylib',
-  'libmux_avi_plugin.dylib',
-  'libmux_dummy_plugin.dylib',
-  'libmux_mp4_plugin.dylib',
-  'libmux_mpjpeg_plugin.dylib',
-  'libmux_ogg_plugin.dylib',
-  'libmux_ps_plugin.dylib',
-  'libmux_ts_plugin.dylib',
-  'libmux_wav_plugin.dylib',
-  'libpacketizer_copy_plugin.dylib',
-  'libpacketizer_dirac_plugin.dylib',
-  'libpacketizer_flac_plugin.dylib',
-  'libpacketizer_h264_plugin.dylib',
-  'libpacketizer_mlp_plugin.dylib',
-  'libpacketizer_mpeg4audio_plugin.dylib',
-  'libpacketizer_mpeg4video_plugin.dylib',
-  'libpacketizer_mpegvideo_plugin.dylib',
-  'libpacketizer_vc1_plugin.dylib',
-  'libi420_rgb_sse2_plugin.dylib',
-  'libi420_yuy2_sse2_plugin.dylib',
-  'libi422_yuy2_sse2_plugin.dylib',
-  'libdecomp_plugin.dylib',
-  'libstream_filter_rar_plugin.dylib',
-  'libstream_filter_record_plugin.dylib',
-  'libvisual_plugin.dylib',
+  'video_chroma/libi420_rgb_mmx_plugin.dylib',
+  'video_chroma/libi420_yuy2_mmx_plugin.dylib',
+  'video_chroma/libi422_yuy2_mmx_plugin.dylib',
+  #'libmemcpymmx_plugin.dylib',
+  #'libmemcpymmxext_plugin.dylib',
+  'mux/libmux_asf_plugin.dylib',
+  'mux/libmux_avi_plugin.dylib',
+  'mux/libmux_dummy_plugin.dylib',
+  'mux/libmux_mp4_plugin.dylib',
+  'mux/libmux_mpjpeg_plugin.dylib',
+  'mux/libmux_ogg_plugin.dylib',
+  'mux/libmux_ps_plugin.dylib',
+  'mux/libmux_ts_plugin.dylib',
+  'mux/libmux_wav_plugin.dylib',
+  'packetizer/libpacketizer_copy_plugin.dylib',
+  'packetizer/libpacketizer_dirac_plugin.dylib',
+  'packetizer/libpacketizer_flac_plugin.dylib',
+  'packetizer/libpacketizer_h264_plugin.dylib',
+  'packetizer/libpacketizer_mlp_plugin.dylib',
+  'packetizer/libpacketizer_mpeg4audio_plugin.dylib',
+  'packetizer/libpacketizer_mpeg4video_plugin.dylib',
+  'packetizer/libpacketizer_mpegvideo_plugin.dylib',
+  'packetizer/libpacketizer_vc1_plugin.dylib',
+  'video_chroma/libi420_rgb_sse2_plugin.dylib',
+  'video_chroma/libi420_yuy2_sse2_plugin.dylib',
+  'video_chroma/libi422_yuy2_sse2_plugin.dylib',
+  'stream_filter/libdecomp_plugin.dylib',
+  #'access/libstream_filter_rar_plugin.dylib',
+  'stream_filter/librecord_plugin.dylib',
+  #'libvisual_plugin.dylib',
 ]
 
 VLC_SEARCH_PATH=[
@@ -199,11 +199,16 @@ QT_PLUGINS = [
     'imageformats/libqmng.dylib',
 ]
 
+SNORE_PLUGINS = [
+    'libsnore_backend_growl.so',
+    'libsnore_backend_osxnotificationcenter.so',
+]
+
 TOMAHAWK_PLUGINS = [
-  'libtomahawk_account_xmpp.so',
+  'libtomahawk_account_xmpp.dylib',
   'libtomahawk_account_google.so',
-  'libtomahawk_account_twitter.so',
   'libtomahawk_account_zeroconf.so',
+  'libtomahawk_account_hatchet.so',
   'libtomahawk_infoplugin_adium.so',
   'libtomahawk_infoplugin_charts.so',
   'libtomahawk_infoplugin_discogs.so',
@@ -213,13 +218,21 @@ TOMAHAWK_PLUGINS = [
   'libtomahawk_infoplugin_musixmatch.so',
   'libtomahawk_infoplugin_newreleases.so',
   'libtomahawk_infoplugin_rovi.so',
+  'libtomahawk_infoplugin_snorenotify.so',
   'libtomahawk_infoplugin_spotify.so',
+  'libtomahawk_viewpage_dashboard.so',
+#  'libtomahawk_viewpage_networkactivity.so',
+  'libtomahawk_viewpage_charts.so',
+  'libtomahawk_viewpage_whatsnew_0_8.so',
 ]
 
 QT_PLUGINS_SEARCH_PATH=[
-    '/usr/local/Cellar/qt/4.8.4/plugins',
+    '/usr/local/Cellar/qt/4.8.6/plugins',
 ]
 
+SNORE_PLUGINS_SEARCH_PATH=[
+    '/usr/local/Cellar/snorenotify/HEAD/lib/libsnore',
+]
 
 class Error(Exception):
   pass
@@ -237,6 +250,10 @@ class CouldNotFindQtPluginError(Error):
   pass
 
 
+class CouldNotFindSnorePluginError(Error):
+  pass
+
+
 class CouldNotFindVLCPluginError(Error):
   pass
 
@@ -245,12 +262,10 @@ class CouldNotFindScriptPluginError(Error):
   pass
 
 
-
 if len(sys.argv) < 2:
   print 'Usage: %s <bundle.app>' % sys.argv[0]
 
 bundle_dir = sys.argv[1]
-
 bundle_name = os.path.basename(bundle_dir).split('.')[0]
 
 commands = []
@@ -258,6 +273,10 @@ commands = []
 binary_dir = os.path.join(bundle_dir, 'Contents', 'MacOS')
 frameworks_dir = os.path.join(bundle_dir, 'Contents', 'Frameworks')
 commands.append(['mkdir', '-p', frameworks_dir])
+vlcplugins_dir = os.path.join(frameworks_dir, 'vlc', 'plugins')
+commands.append(['mkdir', '-p', vlcplugins_dir])
+snoreplugins_dir = os.path.join(binary_dir, 'libsnore')
+commands.append(['mkdir', '-p', snoreplugins_dir])
 resources_dir = os.path.join(bundle_dir, 'Contents', 'Resources')
 commands.append(['mkdir', '-p', resources_dir])
 plugins_dir = os.path.join(bundle_dir, 'Contents', 'qt-plugins')
@@ -369,12 +388,12 @@ def FixLibrary(path):
   for library in broken_libs['libs']:
     FixLibraryInstallPath(library, new_path)
 
-def FixVLCPlugin(abs_path, subdir):
+def FixVLCPlugin(abs_path):
   broken_libs = GetBrokenLibraries(abs_path)
   FixAllLibraries(broken_libs)
 
   #print "Copying plugin....%s %s %s" % (plugins_dir, subdir, os.path.join(abs_path.split('/')[-2:]))
-  new_path = os.path.join(plugins_dir, subdir, os.path.basename(abs_path))
+  new_path = os.path.join(vlcplugins_dir, os.path.basename(abs_path))
   args = ['mkdir', '-p', os.path.dirname(new_path)]
   commands.append(args)
   args = ['ditto', '--arch=i386', '--arch=x86_64', abs_path, new_path]
@@ -489,6 +508,12 @@ def FindQtPlugin(name):
         return os.path.join(path, name)
   raise CouldNotFindQtPluginError(name)
 
+def FindSnorePlugin(name):
+  for path in SNORE_PLUGINS_SEARCH_PATH:
+    if os.path.exists(path):
+      if os.path.exists(os.path.join(path, name)):
+        return os.path.join(path, name)
+  raise CouldNotFindSnorePluginError(name)
 
 def FindVLCPlugin(name):
   for path in VLC_SEARCH_PATH:
@@ -500,10 +525,13 @@ def FindVLCPlugin(name):
 FixBinary(binary)
 
 for plugin in VLC_PLUGINS:
-  FixVLCPlugin(FindVLCPlugin(plugin), '../plugins')
+  FixVLCPlugin(FindVLCPlugin(plugin))
 
 for plugin in TOMAHAWK_PLUGINS:
   FixPlugin(plugin, '../MacOS')
+
+for plugin in SNORE_PLUGINS:
+  FixPlugin(FindSnorePlugin(plugin), '../MacOS/libsnore')
 
 try:
   FixPlugin('tomahawk_crash_reporter', '../MacOS')

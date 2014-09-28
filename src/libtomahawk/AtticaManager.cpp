@@ -19,7 +19,7 @@
 #include "AtticaManager.h"
 
 #include "utils/TomahawkUtils.h"
-#include "TomahawkSettingsGui.h"
+#include "TomahawkSettings.h"
 #include "Pipeline.h"
 #include "Source.h"
 #include "config.h"
@@ -29,6 +29,7 @@
 #include "accounts/AccountManager.h"
 #include "utils/BinaryInstallerHelper.h"
 #include "utils/Closure.h"
+#include "utils/NetworkAccessManager.h"
 
 #include <attica/downloaditem.h>
 
@@ -68,7 +69,7 @@ AtticaManager::AtticaManager( QObject* parent )
 //    m_manager.addProviderFile( QUrl( "http://bakery.tomahawk-player.org/resolvers/providers.xml" ) );
 
     const QString url = QString( "%1/resolvers/providers.xml?version=%2" ).arg( hostname() ).arg( TomahawkUtils::appFriendlyVersion() );
-    QNetworkReply* reply = TomahawkUtils::nam()->get( QNetworkRequest( QUrl( url ) ) );
+    QNetworkReply* reply = Tomahawk::Utils::nam()->get( QNetworkRequest( QUrl( url ) ) );
     NewClosure( reply, SIGNAL( finished() ), this, SLOT( providerFetched( QNetworkReply* ) ), reply );
     connect( reply, SIGNAL( error( QNetworkReply::NetworkError ) ), this, SLOT( providerError( QNetworkReply::NetworkError ) ) );
 
@@ -81,7 +82,6 @@ AtticaManager::AtticaManager( QObject* parent )
 AtticaManager::~AtticaManager()
 {
     savePixmapsToCache();
-
 
     foreach( const QString& id, m_resolverStates.keys() )
     {
@@ -103,7 +103,7 @@ AtticaManager::fetchMissingIcons()
 
         if ( !m_resolverStates.value( resolver.id() ).pixmap && !resolver.icons().isEmpty() && !resolver.icons().first().url().isEmpty() )
         {
-            QNetworkReply* fetch = TomahawkUtils::nam()->get( QNetworkRequest( resolver.icons().first().url() ) );
+            QNetworkReply* fetch = Tomahawk::Utils::nam()->get( QNetworkRequest( resolver.icons().first().url() ) );
             fetch->setProperty( "resolverId", resolver.id() );
 
             connect( fetch, SIGNAL( finished() ), this, SLOT( resolverIconFetched() ) );
@@ -117,6 +117,7 @@ AtticaManager::hostname() const
 {
     return "http://bakery.tomahawk-player.org";
 }
+
 
 void
 AtticaManager::loadPixmapsFromCache()
@@ -254,7 +255,7 @@ AtticaManager::uploadRating( const Content& c )
         }
     }
 
-    TomahawkSettingsGui::instanceGui()->setAtticaResolverStates( m_resolverStates );
+    TomahawkSettings::instance()->setAtticaResolverStates( m_resolverStates );
 
     PostJob* job = m_resolverProvider.voteForContent( c.id(), (uint)c.rating() );
     connect( job, SIGNAL( finished( Attica::BaseJob* ) ), job, SLOT( deleteLater() ) );
@@ -329,7 +330,7 @@ AtticaManager::providerAdded( const Provider& provider )
         m_resolverProvider = provider;
         m_resolvers.clear();
 
-        m_resolverStates = TomahawkSettingsGui::instanceGui()->atticaResolverStates();
+        m_resolverStates = TomahawkSettings::instance()->atticaResolverStates();
 
         ListJob<Category>* job = m_resolverProvider.requestCategories();
         connect( job, SIGNAL( finished( Attica::BaseJob* ) ), this, SLOT( categoriesReturned( Attica::BaseJob* ) ) );
@@ -381,7 +382,7 @@ AtticaManager::resolversList( BaseJob* j )
                 // Uh oh
                 qWarning() << "Found attica resolver marked as installed that didn't exist on disk! Setting to uninstalled: " << rId << dir.absolutePath();
                 m_resolverStates[ rId ].state = Uninstalled;
-                TomahawkSettingsGui::instanceGui()->setAtticaResolverState( rId, Uninstalled );
+                TomahawkSettings::instance()->setAtticaResolverState( rId, Uninstalled );
             }
         }
     }
@@ -463,7 +464,7 @@ AtticaManager::resolverIconFetched()
 
     const QString resolverId = reply->property( "resolverId" ).toString();
 
-    if ( !reply->error() == QNetworkReply::NoError )
+    if ( reply->error() != QNetworkReply::NoError )
     {
         tLog() << "Failed to fetch resolver icon image:" << reply->errorString();
         return;
@@ -550,7 +551,7 @@ void AtticaManager::doInstallResolver( const Content& resolver, bool autoCreate,
     QUrl url( QString( "%1/resolvers/v1/content/download/%2/1" ).arg( hostname() ).arg( resolver.id() ) );
 
     TomahawkUtils::urlAddQueryItem( url, "tomahawkversion", TomahawkUtils::appFriendlyVersion() );
-    QNetworkReply* r = TomahawkUtils::nam()->get( QNetworkRequest( url ) );
+    QNetworkReply* r = Tomahawk::Utils::nam()->get( QNetworkRequest( url ) );
     NewClosure( r, SIGNAL( finished() ), this, SLOT( resolverDownloadFinished( QNetworkReply* ) ), r );
     r->setProperty( "resolverId", resolver.id() );
     r->setProperty( "createAccount", autoCreate );
@@ -611,7 +612,7 @@ AtticaManager::resolverDownloadFinished ( QNetworkReply *j )
            tLog() << "Found overridden signature in binary download:" << sig;
            signature = sig;
        }
-       QNetworkReply* reply = TomahawkUtils::nam()->get( QNetworkRequest( url ) );
+       QNetworkReply* reply = Tomahawk::Utils::nam()->get( QNetworkRequest( url ) );
        connect( reply, SIGNAL( finished() ), this, SLOT( payloadFetched() ) );
        reply->setProperty( "resolverId", j->property( "resolverId" ) );
        reply->setProperty( "createAccount", j->property( "createAccount" ) );
@@ -707,7 +708,7 @@ AtticaManager::payloadFetched()
     {
         tDebug( LOGVERBOSE ) << "Setting installed state to resolver:" << resolverId;
         m_resolverStates[ resolverId ].state = Installed;
-        TomahawkSettingsGui::instanceGui()->setAtticaResolverStates( m_resolverStates );
+        TomahawkSettings::instance()->setAtticaResolverStates( m_resolverStates );
         emit resolverInstalled( resolverId );
         emit resolverStateChanged( resolverId );
     }
@@ -738,7 +739,7 @@ AtticaManager::uninstallResolver( const QString& pathToResolver )
                 m_resolverStates[ atticaId ].state = Uninstalled;
                 delete m_resolverStates[ resolver.id() ].pixmap;
                 m_resolverStates[ atticaId ].pixmap = 0;
-                TomahawkSettingsGui::instanceGui()->setAtticaResolverState( atticaId, Uninstalled );
+                TomahawkSettings::instance()->setAtticaResolverState( atticaId, Uninstalled );
 
                 doResolverRemove( atticaId );
             }
@@ -756,7 +757,7 @@ AtticaManager::uninstallResolver( const Content& resolver )
         emit resolverStateChanged( resolver.id() );
 
         m_resolverStates[ resolver.id() ].state = Uninstalled;
-        TomahawkSettingsGui::instanceGui()->setAtticaResolverState( resolver.id(), Uninstalled );
+        TomahawkSettings::instance()->setAtticaResolverState( resolver.id(), Uninstalled );
     }
 
     delete m_resolverStates[ resolver.id() ].pixmap;

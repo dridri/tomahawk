@@ -31,21 +31,26 @@
 #include "sourcetree/items/SourceItem.h"
 #include "SourcePlaylistInterface.h"
 #include "TomahawkSettings.h"
-#include "GlobalActionManager.h"
 #include "DropJob.h"
 #include "items/GenericPageItems.h"
 #include "items/TemporaryPageItem.h"
 #include "database/DatabaseCommand_SocialAction.h"
 #include "database/Database.h"
 #include "LatchManager.h"
-#include "utils/TomahawkUtilsGui.h"
-#include "utils/Logger.h"
+#include "GlobalActionManager.h"
 #include "utils/Closure.h"
+#include "utils/Logger.h"
+#include "utils/ShortLinkHelper.h"
+#include "utils/TomahawkUtilsGui.h"
 #include "widgets/SourceTreePopupDialog.h"
 #include "PlaylistEntry.h"
 
+#include "../../viewpages/dashboard/Dashboard.h"
+#include "../../viewpages/whatsnew_0_8/WhatsNew_0_8.h"
+
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDragEnterEvent>
 #include <QHeaderView>
@@ -67,9 +72,16 @@ SourceTreeView::SourceTreeView( QWidget* parent )
 
     setFrameShape( QFrame::NoFrame );
     setAttribute( Qt::WA_MacShowFocusRect, 0 );
+    setStyleSheet( "SourceTreeView:active { background: #F2F2F2; } "
+                   "SourceTreeView        { background: #F2F2F2; } " );
     setContentsMargins( 0, 0, 0, 0 );
 
-    QFont fnt;
+    m_playlistMenu.setFont( TomahawkUtils::systemFont() );
+    m_roPlaylistMenu.setFont( TomahawkUtils::systemFont() );
+    m_latchMenu.setFont( TomahawkUtils::systemFont() );
+    m_privacyMenu.setFont( TomahawkUtils::systemFont() );
+
+    QFont fnt = font();
     QFontMetrics fm( fnt );
     // This is sort of the longest string in there. With translations
     // we will never get it right so setting it to something reasonable for the average case
@@ -129,12 +141,6 @@ SourceTreeView::SourceTreeView( QWidget* parent )
 
     showOfflineSources( TomahawkSettings::instance()->showOfflineSources() );
 
-    // Light-blue sourcetree on osx
-#ifdef Q_WS_MAC
-    setStyleSheet( "SourceTreeView:active { background: #DDE4EB; } "
-                   "SourceTreeView        { background: #EDEDED; } " );
-#endif
-
     connect( this, SIGNAL( latchRequest( Tomahawk::source_ptr ) ), m_latchManager, SLOT( latchRequest( Tomahawk::source_ptr ) ) );
     connect( this, SIGNAL( unlatchRequest( Tomahawk::source_ptr ) ), m_latchManager, SLOT( unlatchRequest( Tomahawk::source_ptr ) ) );
     connect( this, SIGNAL( catchUpRequest() ), m_latchManager, SLOT( catchUpRequest() ) );
@@ -147,6 +153,17 @@ SourceTreeView::SourceTreeView( QWidget* parent )
     renamePlaylistAction->setShortcut( Qt::Key_F2 );
     addAction( renamePlaylistAction );
     connect( renamePlaylistAction, SIGNAL( triggered() ), SLOT( renamePlaylist() ) );
+
+    // On the first run with 0.8 show the What's New page.
+    if ( !TomahawkSettings::instance()->value( "whatsnew/shownfor08", false).toBool() )
+    {
+        ViewManager::instance()->showDynamicPage( Tomahawk::Widgets::WHATSNEW_0_8_VIEWPAGE_NAME );
+        TomahawkSettings::instance()->setValue( "whatsnew/shownfor08", true );
+    }
+    else
+    {
+        ViewManager::instance()->showDynamicPage( Tomahawk::Widgets::DASHBOARD_VIEWPAGE_NAME );
+    }
 }
 
 
@@ -179,10 +196,9 @@ SourceTreeView::setupMenus()
 
     QAction* latchOnAction = ActionCollection::instance()->getAction( "latchOn" );
     m_latchMenu.addAction( latchOnAction );
-
     m_privacyMenu.addAction( ActionCollection::instance()->getAction( "togglePrivacy" ) );
 
-    if ( type == SourcesModel::Collection )
+    if ( type == SourcesModel::Source )
     {
         SourceItem* item = itemFromIndex< SourceItem >( m_contextMenuIndex );
         source_ptr source = item->source();
@@ -209,7 +225,6 @@ SourceTreeView::setupMenus()
     {
         loadPlaylistAction = ActionCollection::instance()->getAction( "loadStation" );
         renamePlaylistAction = ActionCollection::instance()->getAction( "renameStation" );
-
     }
     else
     {
@@ -248,7 +263,7 @@ SourceTreeView::setupMenus()
 
     // Handle any custom actions registered for playlists
     if ( type == SourcesModel::StaticPlaylist && !readonly &&
-        !ActionCollection::instance()->getAction( ActionCollection::LocalPlaylists ).isEmpty() )
+         !ActionCollection::instance()->getAction( ActionCollection::LocalPlaylists ).isEmpty() )
     {
         m_playlistMenu.addSeparator();
 
@@ -320,9 +335,9 @@ void
 SourceTreeView::onItemExpanded( const QModelIndex& idx )
 {
     // make sure to expand children nodes for collections
-    if ( idx.data( SourcesModel::SourceTreeItemTypeRole ) == SourcesModel::Collection )
+    if ( idx.data( SourcesModel::SourceTreeItemTypeRole ) == SourcesModel::Source )
     {
-       for( int i = 0; i < model()->rowCount( idx ); i++ )
+       for ( int i = 0; i < model()->rowCount( idx ); i++ )
        {
            setExpanded( model()->index( i, 0, idx ), true );
        }
@@ -444,7 +459,6 @@ SourceTreeView::onDeletePlaylistResult( bool result )
     const QMap< int, bool > questionResults = m_popupDialog.data()->questionResults();
 
     SourcesModel::RowType type = ( SourcesModel::RowType )model()->data( idx, SourcesModel::SourceTreeItemTypeRole ).toInt();
-
     if ( type == SourcesModel::StaticPlaylist )
     {
         PlaylistItem* item = itemFromIndex< PlaylistItem >( idx );
@@ -453,9 +467,8 @@ SourceTreeView::onDeletePlaylistResult( bool result )
         {
             updater->setQuestionResults( questionResults );
         }
-
-        qDebug() << "Doing delete of playlist:" << playlist->title();
-        Playlist::remove( playlist );
+        tDebug() << Q_FUNC_INFO << "Deleting playlist:" << playlist->guid() << playlist->title();
+        Playlist::removalHandler()->remove( playlist );
     }
     else if ( type == SourcesModel::AutomaticPlaylist || type == SourcesModel::Station )
     {
@@ -465,10 +478,17 @@ SourceTreeView::onDeletePlaylistResult( bool result )
         {
             updater->setQuestionResults( questionResults );
         }
-
-        qDebug() << "Doing delete of playlist:" << playlist->title();
-        DynamicPlaylist::remove( playlist );
+        tDebug() << Q_FUNC_INFO << "Deleting dynamic playlist:" << playlist->guid() << playlist->title();
+        DynamicPlaylist::removalHandler()->remove( playlist );
     }
+}
+
+
+void
+SourceTreeView::shortLinkReady( const playlist_ptr&, const QUrl& shortUrl )
+{
+    QByteArray data = TomahawkUtils::percentEncode( shortUrl );
+    QApplication::clipboard()->setText( data );
 }
 
 
@@ -491,7 +511,13 @@ SourceTreeView::copyPlaylistLink()
        const PlaylistItem* item = itemFromIndex< PlaylistItem >( m_contextMenuIndex );
        const playlist_ptr playlist = item->playlist();
 
-       GlobalActionManager::instance()->getShortLink( playlist );
+       Tomahawk::Utils::ShortLinkHelper* slh = new Tomahawk::Utils::ShortLinkHelper();
+       connect( slh, SIGNAL( shortLinkReady( Tomahawk::playlist_ptr, QUrl ) ),
+                SLOT( shortLinkReady( Tomahawk::playlist_ptr, QUrl ) ) );
+       connect( slh, SIGNAL( done() ),
+                slh, SLOT( deleteLater() ),
+                Qt::QueuedConnection );
+       slh->shortLink( playlist );
     }
 }
 
@@ -564,7 +590,7 @@ SourceTreeView::latchOnOrCatchUp()
         return;
 
     SourcesModel::RowType type = ( SourcesModel::RowType )model()->data( m_contextMenuIndex, SourcesModel::SourceTreeItemTypeRole ).toInt();
-    if ( type != SourcesModel::Collection )
+    if ( type != SourcesModel::Source )
         return;
 
     SourceItem* item = itemFromIndex< SourceItem >( m_contextMenuIndex );
@@ -578,12 +604,11 @@ void
 SourceTreeView::latchOff()
 {
     disconnect( this, SLOT( latchOff() ) );
-    qDebug() << Q_FUNC_INFO;
     if ( !m_contextMenuIndex.isValid() )
         return;
 
     SourcesModel::RowType type = ( SourcesModel::RowType )model()->data( m_contextMenuIndex, SourcesModel::SourceTreeItemTypeRole ).toInt();
-    if ( type != SourcesModel::Collection )
+    if ( type != SourcesModel::Source )
         return;
 
     const SourceItem* item = itemFromIndex< SourceItem >( m_contextMenuIndex );
@@ -613,19 +638,54 @@ SourceTreeView::latchOff( const Tomahawk::source_ptr& source )
 void
 SourceTreeView::latchModeToggled( bool checked )
 {
-
+    tDebug() << Q_FUNC_INFO << checked;
     disconnect( this, SLOT( latchOff() ) );
-    qDebug() << Q_FUNC_INFO;
     if ( !m_contextMenuIndex.isValid() )
         return;
 
     SourcesModel::RowType type = ( SourcesModel::RowType )model()->data( m_contextMenuIndex, SourcesModel::SourceTreeItemTypeRole ).toInt();
-    if ( type != SourcesModel::Collection )
+    if ( type != SourcesModel::Source )
         return;
 
     const SourceItem* item = itemFromIndex< SourceItem >( m_contextMenuIndex );
     const source_ptr source = item->source();
     emit latchModeChangeRequest( source, checked );
+}
+
+
+void
+SourceTreeView::renamePlaylist( const Tomahawk::playlist_ptr& playlist )
+{
+    //FIXME: this is unbelievably ugly
+    QModelIndex editIndex;
+    for ( int i = 0; i < model()->rowCount(); i++ )
+    {
+        const QModelIndex topIdx = model()->index( i, 0, QModelIndex() );
+        for ( int j = 0; j < model()->rowCount( topIdx ); j++ )
+        {
+            const QModelIndex colIdx = model()->index( j, 0, QModelIndex( topIdx ) );
+            for ( int x = 0; x < model()->rowCount( colIdx ); x++ )
+            {
+                const QModelIndex grpIdx = model()->index( x, 0, QModelIndex( colIdx ) );
+                for ( int y = 0; y < model()->rowCount( grpIdx ); y++ )
+                {
+                    const QModelIndex plIdx = model()->index( y, 0, QModelIndex( grpIdx ) );
+                    SourcesModel::RowType type = ( SourcesModel::RowType )model()->data( plIdx, SourcesModel::SourceTreeItemTypeRole ).toInt();
+                    if ( type == SourcesModel::StaticPlaylist )
+                    {
+                        const PlaylistItem* item = itemFromIndex< PlaylistItem >( plIdx );
+                        if ( item->playlist() == playlist )
+                        {
+                            editIndex = plIdx;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if ( editIndex.isValid() )
+        edit( editIndex );
 }
 
 
@@ -642,8 +702,6 @@ SourceTreeView::renamePlaylist()
 void
 SourceTreeView::onCustomContextMenu( const QPoint& pos )
 {
-    qDebug() << Q_FUNC_INFO;
-
     QModelIndex idx = m_contextMenuIndex = indexAt( pos );
     if ( !idx.isValid() )
         return;
@@ -662,7 +720,7 @@ SourceTreeView::onCustomContextMenu( const QPoint& pos )
         else
             m_roPlaylistMenu.exec( mapToGlobal( pos ) );
     }
-    else if ( model()->data( m_contextMenuIndex, SourcesModel::SourceTreeItemTypeRole ) == SourcesModel::Collection )
+    else if ( model()->data( m_contextMenuIndex, SourcesModel::SourceTreeItemTypeRole ) == SourcesModel::Source )
     {
         SourceItem* item = itemFromIndex< SourceItem >( m_contextMenuIndex );
         if ( !item->source().isNull() && !item->source()->isLocal() )
@@ -673,6 +731,7 @@ SourceTreeView::onCustomContextMenu( const QPoint& pos )
     else if ( !customActions.isEmpty() )
     {
         QMenu customMenu;
+        customMenu.setFont( TomahawkUtils::systemFont() );
         customMenu.addActions( customActions );
         customMenu.exec( mapToGlobal( pos ) );
     }
@@ -683,18 +742,18 @@ SourceTreeView::onCustomContextMenu( const QPoint& pos )
 void
 SourceTreeView::dragEnterEvent( QDragEnterEvent* event )
 {
-    qDebug() << Q_FUNC_INFO;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO;
     QTreeView::dragEnterEvent( event );
 
-    if ( DropJob::acceptsMimeData( event->mimeData(), DropJob::Track | DropJob::Artist | DropJob::Album | DropJob::Playlist,  DropJob::Create ) )
+    if ( DropJob::acceptsMimeData( event->mimeData(), DropJob::Track | DropJob::Artist | DropJob::Album | DropJob::Playlist, DropJob::Create ) )
     {
-           m_dragging = true;
-           m_dropRect = QRect();
-           m_dropIndex = QPersistentModelIndex();
+        m_dragging = true;
+        m_dropRect = QRect();
+        m_dropIndex = QPersistentModelIndex();
 
-           event->setDropAction( Qt::CopyAction );
-           event->acceptProposedAction();
-     }
+        event->setDropAction( Qt::CopyAction );
+        event->acceptProposedAction();
+    }
 }
 
 
@@ -718,7 +777,7 @@ SourceTreeView::dragMoveEvent( QDragMoveEvent* event )
     bool accept = false;
 
     // Don't highlight the drop for a playlist, as it won't get added to the playlist but created generally
-    if ( DropJob::isDropType( DropJob::Playlist, event->mimeData()  ) )
+    if ( DropJob::isDropType( DropJob::Playlist, event->mimeData() ) )
     {
         event->accept();
         return;
@@ -749,7 +808,7 @@ SourceTreeView::dragMoveEvent( QDragMoveEvent* event )
                 {
                     case SourcesModel::StaticPlaylist:
                     case SourcesModel::CategoryAdd:
-                    case SourcesModel::Collection: //drop to send tracks to peers
+                    case SourcesModel::Source: //drop to send tracks to peers
                         m_delegate->hovered( index, event->mimeData() );
                         dataChanged( index, index );
                         break;
@@ -780,7 +839,7 @@ SourceTreeView::dragMoveEvent( QDragMoveEvent* event )
             event->ignore();
         }
     }
-    else if ( DropJob::acceptsMimeData( event->mimeData(),  DropJob::Playlist | DropJob::Artist | DropJob::Album, DropJob::Create ) )
+    else if ( DropJob::acceptsMimeData( event->mimeData(), DropJob::Playlist | DropJob::Artist | DropJob::Album, DropJob::Create ) )
     {
         event->setDropAction( Qt::CopyAction );
         event->accept();
@@ -795,21 +854,9 @@ SourceTreeView::dropEvent( QDropEvent* event )
     const QPoint pos = event->pos();
     const QModelIndex index = indexAt( pos );
 
-    if ( model()->data( index, SourcesModel::SourceTreeItemTypeRole ).toInt() == SourcesModel::StaticPlaylist
-         || model()->data( index, SourcesModel::SourceTreeItemTypeRole ).toInt() == SourcesModel::LovedTracksPage
-         || model()->data( index, SourcesModel::SourceTreeItemTypeRole ).toInt() == SourcesModel::CategoryAdd )
-    {
-        SourceTreeItem* item = itemFromIndex< SourceTreeItem >( index );
-        Q_ASSERT( item );
-
-        item->setDropType( m_delegate->hoveredDropType() );
-        qDebug() << Q_FUNC_INFO << "dropType is " << m_delegate->hoveredDropType();
-    }
-
     // if it's a playlist drop, accept it anywhere in the sourcetree by manually parsing it.
-    if ( DropJob::isDropType( DropJob::Playlist, event->mimeData()  ) )
+    if ( DropJob::isDropType( DropJob::Playlist, event->mimeData() ) )
     {
-        qDebug() << Q_FUNC_INFO << "Current Event";
         DropJob* dropThis = new DropJob;
         dropThis->setDropTypes( DropJob::Playlist );
         dropThis->setDropAction( DropJob::Create );
@@ -892,10 +939,9 @@ SourceTreeView::drawRow( QPainter* painter, const QStyleOptionViewItem& option, 
 
 
 void
-SourceTreeView::drawBranches( QPainter* painter, const QRect& rect, const QModelIndex& index ) const
+SourceTreeView::drawBranches( QPainter* /* painter */, const QRect& /* rect */, const QModelIndex& /* index */ ) const
 {
-    if ( !QString( qApp->style()->metaObject()->className() ).toLower().contains( "qtcurve" ) )
-        QTreeView::drawBranches( painter, rect, index );
+    return;
 }
 
 

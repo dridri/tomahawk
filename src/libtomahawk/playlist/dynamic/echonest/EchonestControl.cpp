@@ -25,8 +25,6 @@
 #include "utils/Logger.h"
 #include "SourceList.h"
 
-#include <echonest/Playlist.h>
-
 #include <QComboBox>
 #include <QLineEdit>
 #include <QLabel>
@@ -164,12 +162,12 @@ Tomahawk::EchonestControl::updateWidgets()
         QComboBox* match = new QComboBox();
         QLineEdit* input =  new QLineEdit();
 
-        match->addItem( "Similar To", Echonest::DynamicPlaylist::ArtistRadioType );
-        match->addItem( "Limit To", Echonest::DynamicPlaylist::ArtistType );
+        match->addItem( tr( "Similar To" ), Echonest::DynamicPlaylist::ArtistRadioType );
+        match->addItem( tr( "Limit To" ), Echonest::DynamicPlaylist::ArtistType );
         m_matchString = match->currentText();
         m_matchData = match->itemData( match->currentIndex() ).toString();
 
-        input->setPlaceholderText( "Artist name" );
+        input->setPlaceholderText( tr( "Artist name" ) );
         input->setSizePolicy( QSizePolicy::Ignored, QSizePolicy::Fixed );
         input->setCompleter( new QCompleter( QStringList(), input ) );
         input->completer()->setCaseSensitivity( Qt::CaseInsensitive );
@@ -245,7 +243,7 @@ Tomahawk::EchonestControl::updateWidgets()
 
         QLabel* match = new QLabel( tr( "similar to" ) );
         QLineEdit* input =  new QLineEdit();
-        input->setPlaceholderText( "Enter any combination of song name and artist here..." );
+        input->setPlaceholderText( tr( "Enter any combination of song name and artist here..." ) );
 
         m_matchString = QString();
         m_matchData = QString::number( (int)Echonest::DynamicPlaylist::SongRadioType );
@@ -361,14 +359,14 @@ Tomahawk::EchonestControl::updateWidgets()
     {
         m_currentType = Echonest::DynamicPlaylist::ArtistMinLatitude;
         QString deg = QString( QChar( 0x00B0 ) );
-        setupMinMaxWidgets( Echonest::DynamicPlaylist::ArtistMinLatitude, Echonest::DynamicPlaylist::ArtistMaxLatitude, QString( "-180%1" ).arg( deg ), QString( "180%1" ).arg( deg ), 180 );
+        setupMinMaxWidgets( Echonest::DynamicPlaylist::ArtistMinLatitude, Echonest::DynamicPlaylist::ArtistMaxLatitude, QString( tr( "-180%1" ) ).arg( deg ), QString( tr( "180%1" ) ).arg( deg ), 180 );
         qobject_cast< LabeledSlider* >( m_input.data() )->slider()->setMinimum( -180 );
     }
     else if( selectedType() == "Longitude" )
     {
         m_currentType = Echonest::DynamicPlaylist::ArtistMinLongitude;
         QString deg = QString( QChar( 0x00B0 ) );
-        setupMinMaxWidgets( Echonest::DynamicPlaylist::ArtistMinLongitude, Echonest::DynamicPlaylist::ArtistMaxLongitude, QString( "-180%1" ).arg( deg ), QString( "180%1" ).arg( deg ), 180 );
+        setupMinMaxWidgets( Echonest::DynamicPlaylist::ArtistMinLongitude, Echonest::DynamicPlaylist::ArtistMaxLongitude, QString( tr( "-180%1" ) ).arg( deg ), QString( tr( "180%1" ) ).arg( deg ), 180 );
         qobject_cast< LabeledSlider* >( m_input.data() )->slider()->setMinimum( -180 );
     }
     else if( selectedType() == "Mode" )
@@ -494,9 +492,11 @@ Tomahawk::EchonestControl::updateWidgets()
         match->addItem( tr( "is not" ), 0 );
 
         QComboBox* combo = new QComboBox();
-        combo->addItem( tr( "Studio" ), "studio" );
-        combo->addItem( tr( "Live" ), "live" );
-        combo->addItem( tr( "Christmas" ), "christmas" );
+        combo->addItem( tr( "Studio", "Song type: The song was recorded in a studio." ), "studio" );
+        combo->addItem( tr( "Live", "Song type: The song was a life performance." ), "live" );
+        combo->addItem( tr( "Acoustic", "Song type" ), "acoustic" );
+        combo->addItem( tr( "Electric", "Song type" ), "electric" );
+        combo->addItem( tr( "Christmas", "Song type: A christmas song" ), "christmas" );
 
         connect( match, SIGNAL( activated( int ) ), this, SLOT( updateData() ) );
         connect( match, SIGNAL( activated( int ) ), this, SLOT( editingFinished() ) );
@@ -523,8 +523,8 @@ void
 Tomahawk::EchonestControl::setupMinMaxWidgets( Echonest::DynamicPlaylist::PlaylistParam min, Echonest::DynamicPlaylist::PlaylistParam max, const QString& leftL, const QString& rightL, int maxRange )
 {
     QComboBox* match = new QComboBox;
-    match->addItem( "At Least", min );
-    match->addItem( "At Most", max );
+    match->addItem( tr( "At Least" ), min );
+    match->addItem( tr( "At Most" ), max );
 
     LabeledSlider* input = new LabeledSlider( leftL, rightL );
     input->slider()->setRange( 0, maxRange );
@@ -640,12 +640,13 @@ Tomahawk::EchonestControl::updateFromComboAndSlider( bool smooth )
     {
         m_matchString = combo->currentText();
         m_matchData = combo->itemData( combo->currentIndex() ).toString();
-    }
-    LabeledSlider* ls = qobject_cast<LabeledSlider*>( m_input.data() );
-    if( ls && ls->slider() )
-    {
-        m_data.first = static_cast< Echonest::DynamicPlaylist::PlaylistParam >( combo->itemData( combo->currentIndex() ).toInt() );
-        m_data.second = ls->slider()->value() / ( smooth ? 10000. : 1.0 );
+
+        LabeledSlider* ls = qobject_cast<LabeledSlider*>( m_input.data() );
+        if( ls && ls->slider() )
+        {
+            m_data.first = static_cast< Echonest::DynamicPlaylist::PlaylistParam >( combo->itemData( combo->currentIndex() ).toInt() );
+            m_data.second = ls->slider()->value() / ( smooth ? 10000. : 1.0 );
+        }
     }
 }
 
@@ -893,7 +894,7 @@ Tomahawk::EchonestControl::calculateSummary()
             else
             {
                 QString subSum;
-                if ( b->currentText() == tr( "My Collection" ) )
+                if ( b->currentText() == tr( "You" ) )
                     summary = tr( "from my radio" );
                 else
                     summary = tr( "from %1 radio" ).arg( b->currentText() );

@@ -22,8 +22,12 @@
 #include "jobview/JobStatusView.h"
 #include "jobview/JobStatusModel.h"
 #include "jobview/ErrorStatusMessage.h"
+#include "AccountManager.h"
+#include "AtticaManager.h"
+#include "ConfigStorage.h"
 #include "resolvers/ExternalResolver.h"
 #include "resolvers/ExternalResolverGui.h"
+#include "utils/Json.h"
 #include "utils/Logger.h"
 
 #include "Album.h"
@@ -35,8 +39,6 @@
 #include "Source.h"
 #include "TomahawkSettings.h"
 #include "TomahawkVersion.h"
-
-#include "qjson/parser.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -225,9 +227,8 @@ ResolverAccountFactory::metadataFromJsonFile( const QString& path )
     QFile metadataFile( path );
     if ( metadataFile.open( QIODevice::ReadOnly | QIODevice::Text ) )
     {
-        QJson::Parser parser;
         bool ok;
-        QVariantMap variant = parser.parse( metadataFile.readAll(), &ok ).toMap();
+        QVariantMap variant = TomahawkUtils::parseJson( metadataFile.readAll(), &ok ).toMap();
 
         if ( ok )
         {
@@ -302,6 +303,10 @@ ResolverAccount::ResolverAccount( const QString& accountId, const QString& path,
 
     setConfiguration( configuration );
 
+    //just init so this account is tracked by LCS, we'll sync later
+    if ( !AccountManager::instance()->configStorageForAccount( accountId ) )
+        AccountManager::instance()->localConfigStorage()->save( accountId, Account::Configuration() );
+
     init( path );
 
     sync();
@@ -344,7 +349,7 @@ ResolverAccount::hookupResolver()
     if ( configuration().contains( "scripts" ) )
         additionalPaths = configuration().value( "scripts" ).toStringList();
 
-    Tomahawk::ExternalResolver* er = Pipeline::instance()->addScriptResolver( mainScriptPath, additionalPaths );
+    Tomahawk::ExternalResolver* er = Pipeline::instance()->addScriptResolver( accountId(), mainScriptPath, additionalPaths );
     m_resolver = QPointer< ExternalResolverGui >( qobject_cast< ExternalResolverGui* >( er ) );
     connect( m_resolver.data(), SIGNAL( changed() ), this, SLOT( resolverChanged() ) );
 

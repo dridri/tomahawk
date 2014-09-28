@@ -29,13 +29,11 @@
 #include "Artist.h"
 #include "Pipeline.h"
 #include "Query.h"
+#include "Result.h"
 #include "Source.h"
 #include "SourceList.h"
 
-// Forward Declarations breaking QSharedPointer
-#if QT_VERSION < QT_VERSION_CHECK( 5, 0, 0 )
-    #include "Result.h"
-#endif
+#include <QDateTime>
 
 
 using namespace Tomahawk;
@@ -63,9 +61,11 @@ AlbumPlaylistInterface::~AlbumPlaylistInterface()
 void
 AlbumPlaylistInterface::setCurrentIndex( qint64 index )
 {
-    PlaylistInterface::setCurrentIndex( index );
+    if ( index < m_queries.size() && !m_queries.at( index ).isNull() && m_queries.at( index )->results().size() > 0 ) {
+      PlaylistInterface::setCurrentIndex( index );
 
-    m_currentItem = m_queries.at( index )->results().first();
+      m_currentItem = m_queries.at( index )->results().first();
+    }
 }
 
 
@@ -141,7 +141,7 @@ AlbumPlaylistInterface::tracks() const
 
             const_cast< int& >( m_lastQueryTimestamp ) = QDateTime::currentMSecsSinceEpoch();
         }
-        else if ( m_mode == DatabaseMode && !m_databaseLoaded )
+        else if ( m_mode == DatabaseMode && !m_databaseLoaded && !m_finished )
         {
             if ( m_collection.isNull() ) //we do a dbcmd directly, for the SuperCollection I guess?
             {
@@ -237,7 +237,8 @@ AlbumPlaylistInterface::infoSystemFinished( const QString& infoId )
     disconnect( Tomahawk::InfoSystem::InfoSystem::instance(), SIGNAL( finished( QString ) ),
                 this, SLOT( infoSystemFinished( QString ) ) );
 
-    if ( m_queries.isEmpty() && m_mode == Mixed )
+    // Add !m_finished check to not endlessly reload on an empty album.
+    if ( m_queries.isEmpty() && m_mode == Mixed && !m_finished )
     {
         if ( m_collection.isNull() ) //we do a dbcmd directly, for the SuperCollection I guess?
         {

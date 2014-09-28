@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -32,12 +32,12 @@
 namespace Tomahawk
 {
     class ContextMenu;
+    class MetaPlaylistInterface;
 };
 
 class AnimatedSpinner;
 class GridItemDelegate;
 class PlayableModel;
-class GridPlaylistInterface;
 
 class DLLEXPORT GridView : public QListView, public Tomahawk::ViewPage
 {
@@ -46,6 +46,9 @@ Q_OBJECT
 public:
     explicit GridView( QWidget* parent = 0 );
     ~GridView();
+
+    virtual QSize minimumSizeHint() const;
+    virtual QSize sizeHint() const;
 
     void setProxyModel( PlayableProxyModel* model );
 
@@ -63,6 +66,9 @@ public:
     void setModel( QAbstractItemModel* model );
 
     void setEmptyTip( const QString& tip );
+
+    QSize itemSize() const { return m_itemSize; }
+    void setItemSize( const QSize& size );
 
     virtual QWidget* widget() { return this; }
     virtual Tomahawk::playlistinterface_ptr playlistInterface() const;
@@ -97,6 +103,9 @@ protected:
 protected slots:
     virtual void currentChanged( const QModelIndex& current, const QModelIndex& previous );
 
+    void onViewChanged();
+    void onScrollTimeout();
+
 private slots:
     void onFilterChanged( const QString& filter );
     void onCustomContextMenu( const QPoint& pos );
@@ -114,6 +123,9 @@ private:
     AnimatedSpinner* m_loadingSpinner;
     OverlayWidget* m_overlay;
 
+    Tomahawk::MetaPlaylistInterface* m_mpl;
+    Tomahawk::playlistinterface_ptr m_playlistInterface;
+
     QModelIndex m_contextMenuIndex;
     QPersistentModelIndex m_playing;
 
@@ -123,10 +135,11 @@ private:
     bool m_inited;
     bool m_autoFitItems;
     bool m_autoResize;
-
+    QSize m_itemSize;
     QRect m_paintRect;
 
-    friend class ::GridPlaylistInterface;
+    QTimer m_timer;
+    QSize m_sizeHint;
 };
 
 #endif // GRIDVIEW_H

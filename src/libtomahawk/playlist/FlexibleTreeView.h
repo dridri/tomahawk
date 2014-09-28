@@ -1,6 +1,7 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2012, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2012-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2014,      Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -27,10 +28,9 @@ class QStackedWidget;
 
 class GridView;
 class TrackView;
-class TreeView;
 class ColumnView;
 class TreeModel;
-class ModeHeader;
+class PlayableModel;
 class PlaylistModel;
 class FilterHeader;
 
@@ -59,23 +59,22 @@ public:
     void setTemporaryPage( bool b );
 
     ColumnView* columnView() const { return m_columnView; }
-    TreeView* treeView() const { return m_treeView; }
     TrackView* trackView() const { return m_trackView; }
 
-    void setGuid( const QString& guid );
-
     void setColumnView( ColumnView* view );
-    void setTreeView( TreeView* view );
     void setTrackView( TrackView* view );
 
     void setTreeModel( TreeModel* model );
+    void setFlatModel( PlayableModel* model );
+    void setAlbumModel( PlayableModel* model );
 
-    void setPixmap( const QPixmap& pixmap );
+    void setPixmap( const QPixmap& pixmap, bool tinted = true );
     void setEmptyTip( const QString& tip );
 
 public slots:
     void setCurrentMode( FlexibleTreeViewMode mode );
     virtual bool setFilter( const QString& pattern );
+    void restoreViewMode(); //ViewManager calls this on every show
 
 signals:
     void modeChanged( FlexibleTreeViewMode mode );
@@ -87,14 +86,15 @@ private slots:
 
 private:
     FilterHeader* m_header;
-    ModeHeader* m_modeHeader;
     QPixmap m_pixmap;
 
     ColumnView* m_columnView;
-    TreeView* m_treeView;
     TrackView* m_trackView;
+    GridView* m_albumView;
 
     TreeModel* m_model;
+    PlayableModel* m_flatModel;
+    PlayableModel* m_albumModel;
     QStackedWidget* m_stack;
 
     FlexibleTreeViewMode m_mode;

@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2013, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2012,      Teo Mrnjavac <teo@kde.org>
@@ -25,6 +25,7 @@
 #include "Result.h"
 #include "audio/AudioEngine.h"
 #include "utils/XspfLoader.h"
+#include "utils/DpiScaler.h"
 
 #include "config.h"
 
@@ -36,9 +37,12 @@
 #include <QToolButton>
 #ifdef Q_OS_WIN
     #include <shobjidl.h>
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 2, 0 )
+    #include <QWinThumbnailToolBar>
+    #include <QWinThumbnailToolButton>
+#endif
 #endif
 
-class SettingsDialog;
 namespace Tomahawk
 {
     namespace Accounts
@@ -56,7 +60,6 @@ class MusicScanner;
 class AudioControls;
 class TomahawkTrayIcon;
 class PlaylistModel;
-class QueueView;
 class AnimatedSplitter;
 
 class AccountsToolButton;
@@ -67,7 +70,7 @@ namespace Ui
     class GlobalSearchWidget;
 }
 
-class TomahawkWindow : public QMainWindow
+class TomahawkWindow : public QMainWindow, private TomahawkUtils::DpiScaler
 {
 Q_OBJECT
 
@@ -87,18 +90,20 @@ protected:
     void hideEvent( QHideEvent* e );
     void keyPressEvent( QKeyEvent* e );
 
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK( 5, 2, 0 )
     bool winEvent( MSG* message, long* result );
 #endif
 
 public slots:
-    void createAutomaticPlaylist( QString );
     void createStation();
     void createPlaylist();
     void loadSpiff();
     void showSettingsDialog();
     void showDiagnosticsDialog();
     void legalInfo();
+    void getSupport();
+    void helpTranslate();
+    void reportBug();
     void openLogfile();
     void updateCollectionManually();
     void rescanCollectionManually();
@@ -116,7 +121,7 @@ private slots:
     void onXSPFError( XSPFLoader::XSPFErrorCode error );
     void onXSPFOk( const Tomahawk::playlist_ptr& );
 
-    void onPlaybackLoading( const Tomahawk::result_ptr& result );
+    void onPlaybackLoading( const Tomahawk::result_ptr result );
 
     void audioStarted();
     void audioFinished();
@@ -124,6 +129,7 @@ private slots:
     void audioStopped();
 
     void showAboutTomahawk();
+    void showWhatsNew_0_8();
     void checkForUpdates();
 
     void onSearch( const QString& search );
@@ -131,19 +137,16 @@ private slots:
 
     void loadXspfFinished( int );
 
-    void showQueue();
-    void hideQueue();
-
     void minimize();
     void maximize();
     void toggleFullscreen();
-
-    void playlistCreateDialogFinished( int ret );
 
     void crashNow();
 
     void toggleMenuBar();
     void balanceToolbar();
+
+    void toggleLoved();
 
     void audioStateChanged( AudioState newState, AudioState oldState );
     void updateWindowsLoveButton();
@@ -157,17 +160,22 @@ private:
     void setupMenuBar();
     void setupToolBar();
     void setupSideBar();
+    void setupStatusBar();
+    void setupShortcuts();
     void setupUpdateCheck();
 
 #ifdef Q_OS_WIN
     bool setupWindowsButtons();
+#if QT_VERSION < QT_VERSION_CHECK( 5, 2, 0 )
     const unsigned int m_buttonCreatedID;
     HICON thumbIcon(TomahawkUtils::ImageType type);
-  #ifdef HAVE_THUMBBUTTON
     ITaskbarList3* m_taskbarList;
     THUMBBUTTON m_thumbButtons[5];
-  #endif
-    enum TB_STATES{ TP_PREVIOUS = 0,TP_PLAY_PAUSE = 1,TP_NEXT = 2,TP_LOVE = 4 };
+#else
+    QIcon thumbIcon(TomahawkUtils::ImageType type);
+    QWinThumbnailToolBar *m_taskbarList;
+#endif
+    enum TB_STATES{ TP_PREVIOUS = 0,TP_PLAY_PAUSE = 1,TP_NEXT = 2, TP_SPACE = 3, TP_LOVE = 4 };
 #endif
 
     Ui::TomahawkWindow* ui;
@@ -176,11 +184,8 @@ private:
     TomahawkTrayIcon* m_trayIcon;
     SourceTreeView* m_sourcetree;
     QPushButton* m_statusButton;
-    QPushButton* m_queueButton;
-    QueueView* m_queueView;
     AnimatedSplitter* m_sidebar;
     JobStatusSortModel* m_jobsModel;
-    SettingsDialog* m_settingsDialog;
 
     // Menus and menu actions: Accounts menu
     QMenuBar    *m_menuBar;

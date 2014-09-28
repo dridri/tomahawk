@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011  Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *
@@ -20,18 +20,27 @@
 
 #include "TomahawkSettings.h"
 
+#include "collection/Collection.h"
 #include "database/DatabaseCommand_UpdateSearchIndex.h"
 #include "database/Database.h"
 #include "infosystem/InfoSystemCache.h"
 #include "playlist/PlaylistUpdaterInterface.h"
 #include "utils/Logger.h"
+#include "utils/Json.h"
 #include "utils/TomahawkUtils.h"
 
 #include "PlaylistEntry.h"
 #include "PlaylistInterface.h"
 #include "Source.h"
 
-#include <qtkeychain/keychain.h>
+#if QT_VERSION < QT_VERSION_CHECK(5,0,0)
+    #include <qtkeychain/keychain.h>
+    #include <QDesktopServices>
+#else
+    #include <qt5keychain/keychain.h>
+    #include <QStandardPaths>
+#endif
+
 #include <QDir>
 
 using namespace Tomahawk;
@@ -303,7 +312,7 @@ TomahawkSettings::doUpgrade( int oldVersion, int newVersion )
     else if ( oldVersion == 4 || oldVersion == 5 )
     {
         // 0.3.0 contained a bug which prevent indexing local files. Force a reindex.
-        QTimer::singleShot( 0, this, SLOT( updateIndex() ) );
+        updateIndex();
     }
     else if ( oldVersion == 6 )
     {
@@ -352,7 +361,7 @@ TomahawkSettings::doUpgrade( int oldVersion, int newVersion )
                      value( sipPlugin + "/screenname" ).toString().isEmpty() )
                     continue;
 
-                QVariantHash credentials;
+                QVariantMap credentials;
                 credentials[ "oauthtoken" ] = value( sipPlugin + "/oauthtoken" );
                 credentials[ "oauthtokensecret" ] = value( sipPlugin + "/oauthtokensecret" );
                 credentials[ "username" ] = value( sipPlugin + "/screenname" );
@@ -420,7 +429,6 @@ TomahawkSettings::doUpgrade( int oldVersion, int newVersion )
 
             setValue( "configuration", configuration );
             endGroup();
-
         }
 
         // Add a Last.Fm account since we now moved the infoplugin into the account
@@ -442,7 +450,7 @@ TomahawkSettings::doUpgrade( int oldVersion, int newVersion )
         setValue( "enabled", hasLastFmEnabled );
         setValue( "autoconnect", true );
         setValue( "types", QStringList() << "ResolverType" << "StatusPushType" );
-        QVariantHash credentials;
+        QVariantMap credentials;
         credentials[ "username" ] = lfmUsername;
         credentials[ "password" ] = lfmPassword;
         credentials[ "session" ] = value( "lastfm/session" ).toString();
@@ -614,17 +622,27 @@ TomahawkSettings::doUpgrade( int oldVersion, int newVersion )
     }
     else if ( oldVersion == 14 )
     {
+        //No upgrade on OSX: we keep storing credentials in TomahawkSettings
+        //because QtKeychain and/or OSX Keychain is flaky. --Teo 12/2013
+#ifndef Q_OS_MAC
         const QStringList accounts = value( "accounts/allaccounts" ).toStringList();
         tDebug() << "About to move these accounts to QtKeychain:" << accounts;
+
         //Move storage of Credentials from QSettings to QtKeychain
         foreach ( const QString& account, accounts )
         {
             tDebug() << "beginGroup" << QString( "accounts/%1" ).arg( account );
             beginGroup( QString( "accounts/%1" ).arg( account ) );
-            const QVariantHash creds = value( "credentials" ).toHash();
-            tDebug() << creds[ "username" ]
-                     << ( creds[ "password" ].isNull() ? ", no password" : ", has password" );
+            const QVariantHash hash = value( "credentials" ).toHash();
+            tDebug() << hash[ "username" ]
+                     << ( hash[ "password" ].isNull() ? ", no password" : ", has password" );
 
+            QVariantMap creds;
+            for ( QVariantHash::const_iterator it = hash.constBegin(); it != hash.constEnd(); ++it )
+            {
+                creds.insert( it.key(), it.value() );
+
+            }
             if ( !creds.isEmpty() )
             {
                 QKeychain::WritePasswordJob* j = new QKeychain::WritePasswordJob( QLatin1String( "Tomahawk" ), this );
@@ -633,11 +651,19 @@ TomahawkSettings::doUpgrade( int oldVersion, int newVersion )
 #if defined( Q_OS_UNIX ) && !defined( Q_OS_MAC )
                 j->setInsecureFallback( true );
 #endif
-                QByteArray data;
-                QDataStream ds( &data, QIODevice::WriteOnly );
-                ds << creds;
+                bool ok;
+                QByteArray data = TomahawkUtils::toJson( creds, &ok );
 
-                j->setBinaryData( data );
+                if ( ok )
+                {
+                    tDebug() << "Performing upgrade for account" << account;
+                }
+                else
+                {
+                    tDebug() << "Upgrade error: cannot serialize credentials to JSON for account" << account;
+                }
+
+                j->setTextData( data );
                 j->start();
             }
 
@@ -645,6 +671,12 @@ TomahawkSettings::doUpgrade( int oldVersion, int newVersion )
 
             endGroup();
         }
+#endif //Q_OS_MAC
+    }
+    else if ( oldVersion == 15 )
+    {
+        // 0.8.0 switches to Lucene++. Force a reindex.
+        updateIndex();
     }
 }
 
@@ -673,14 +705,32 @@ TomahawkSettings::setInfoSystemCacheVersion( uint version )
 uint
 TomahawkSettings::infoSystemCacheVersion() const
 {
-    return value( "infosystemcacheversion", 3 ).toUInt();
+    return value( "infosystemcacheversion", 0 ).toUInt();
+}
+
+
+void
+TomahawkSettings::setGenericCacheVersion( uint version )
+{
+    setValue( "genericcacheversion", version );
+}
+
+
+uint
+TomahawkSettings::genericCacheVersion() const
+{
+    return value( "genericcacheversion", 0 ).toUInt();
 }
 
 
 QString
 TomahawkSettings::storageCacheLocation() const
 {
-    return QDir::tempPath() + "/tomahawk/";
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
+    return QStandardPaths::writableLocation( QStandardPaths::CacheLocation );
+#else
+    return QDesktopServices::storageLocation( QDesktopServices::CacheLocation );
+#endif
 }
 
 
@@ -689,8 +739,10 @@ TomahawkSettings::scannerPaths() const
 {
     QString musicLocation;
 
-#if defined(Q_WS_X11)
-    musicLocation = QDir::homePath() + QLatin1String("/Music");
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
+    musicLocation = QStandardPaths::writableLocation( QStandardPaths::MusicLocation );
+#else
+    musicLocation = QDesktopServices::storageLocation( QDesktopServices::MusicLocation );
 #endif
 
     return value( "scanner/paths", musicLocation ).toStringList();
@@ -751,6 +803,20 @@ void
 TomahawkSettings::setHttpEnabled( bool enable )
 {
     setValue( "network/http", enable );
+}
+
+
+bool
+TomahawkSettings::httpBindAll() const
+{
+    return value ( "network/httpbindall", false ).toBool();
+}
+
+
+void
+TomahawkSettings::setHttpBindAll( bool bindAll )
+{
+    setValue( "network/httpbindall", bindAll );
 }
 
 
@@ -1458,6 +1524,12 @@ TomahawkSettings::setPrivateListeningMode( TomahawkSettings::PrivateListeningMod
 void
 TomahawkSettings::updateIndex()
 {
+    if ( !Database::instance() || !Database::instance()->isReady() )
+    {
+        QTimer::singleShot( 0, this, SLOT( updateIndex() ) );
+        return;
+    }
+
     Tomahawk::DatabaseCommand* cmd = new Tomahawk::DatabaseCommand_UpdateSearchIndex();
     Database::instance()->enqueue( QSharedPointer<Tomahawk::DatabaseCommand>( cmd ) );
 }
@@ -1507,10 +1579,119 @@ QMap<QString, QVariant> TomahawkSettings::lastChartIds(){
 }
 
 
+inline QDataStream&
+operator<<( QDataStream& out, const AtticaManager::StateHash& states )
+{
+    out <<  TOMAHAWK_SETTINGS_VERSION;
+    out << (quint32)states.count();
+    foreach( const QString& key, states.keys() )
+    {
+        AtticaManager::Resolver resolver = states[ key ];
+        out << key << resolver.version << resolver.scriptPath << (qint32)resolver.state << resolver.userRating << resolver.binary;
+    }
+    return out;
+}
+
+
+inline QDataStream&
+operator>>( QDataStream& in, AtticaManager::StateHash& states )
+{
+    quint32 count = 0, configVersion = 0;
+    in >> configVersion;
+    in >> count;
+    for ( uint i = 0; i < count; i++ )
+    {
+        QString key, version, scriptPath;
+        qint32 state, userRating;
+        bool binary = false;
+        in >> key;
+        in >> version;
+        in >> scriptPath;
+        in >> state;
+        in >> userRating;
+        if ( configVersion > 10 )
+        {
+            // V11 includes 'bool binary' flag
+            in >> binary;
+        }
+        states[ key ] = AtticaManager::Resolver( version, scriptPath, userRating, (AtticaManager::ResolverState)state, binary );
+    }
+    return in;
+}
+
+
 void
 TomahawkSettings::registerCustomSettingsHandlers()
 {
     qRegisterMetaType< Tomahawk::SerializedUpdater >( "Tomahawk::SerializedUpdater" );
     qRegisterMetaType< Tomahawk::SerializedUpdaters >( "Tomahawk::SerializedUpdaters" );
     qRegisterMetaTypeStreamOperators< Tomahawk::SerializedUpdaters >( "Tomahawk::SerializedUpdaters" );
+
+    qRegisterMetaType< AtticaManager::StateHash >( "AtticaManager::StateHash" );
+    qRegisterMetaTypeStreamOperators< AtticaManager::StateHash >( "AtticaManager::StateHash" );
 }
+
+
+void
+TomahawkSettings::setAtticaResolverState( const QString& resolver, AtticaManager::ResolverState state )
+{
+    AtticaManager::StateHash resolvers = value( "script/atticaresolverstates" ).value< AtticaManager::StateHash >();
+    AtticaManager::Resolver r = resolvers.value( resolver );
+    r.state = state;
+    resolvers.insert( resolver, r );
+    setValue( "script/atticaresolverstates", QVariant::fromValue< AtticaManager::StateHash >( resolvers ) );
+
+    sync();
+}
+
+
+AtticaManager::StateHash
+TomahawkSettings::atticaResolverStates() const
+{
+    return value( "script/atticaresolverstates" ).value< AtticaManager::StateHash >();
+}
+
+
+void
+TomahawkSettings::setAtticaResolverStates( const AtticaManager::StateHash states )
+{
+    setValue( "script/atticaresolverstates", QVariant::fromValue< AtticaManager::StateHash >( states ) );
+}
+
+
+void
+TomahawkSettings::removeAtticaResolverState ( const QString& resolver )
+{
+    AtticaManager::StateHash resolvers = value( "script/atticaresolverstates" ).value< AtticaManager::StateHash >();
+    resolvers.remove( resolver );
+    setValue( "script/atticaresolverstates", QVariant::fromValue< AtticaManager::StateHash >( resolvers ) );
+}
+
+
+QByteArray
+TomahawkSettings::playdarCertificate() const
+{
+    return value( "playdar/certificate").value< QByteArray >();
+}
+
+
+void
+TomahawkSettings::setPlaydarCertificate( const QByteArray& cert )
+{
+    setValue( "playdar/certificate", cert );
+}
+
+
+QByteArray
+TomahawkSettings::playdarKey() const
+{
+    return value( "playdar/key" ).value< QByteArray >();
+}
+
+
+void
+TomahawkSettings::setPlaydarKey( const QByteArray& key )
+{
+    setValue( "playdar/key", key );
+}
+

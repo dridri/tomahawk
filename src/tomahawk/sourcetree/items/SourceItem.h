@@ -111,7 +111,7 @@ private:
     bool m_latchedOn;
     Tomahawk::source_ptr m_latchedOnTo;
 
-    QMap< Tomahawk::collection_ptr, GenericPageItem* > m_collectionItems;
+    QMap< Tomahawk::collection_ptr, SourceTreeItem* > m_collectionItems;
     QMap< Tomahawk::collection_ptr, Tomahawk::ViewPage* > m_collectionPages;
 
     GenericPageItem* m_sourceInfoItem;
@@ -123,7 +123,6 @@ private:
     Tomahawk::ViewPage* m_coolPlaylistsPage;
     Tomahawk::ViewPage* m_latestAdditionsPage;
     Tomahawk::ViewPage* m_recentPlaysPage;
-    Tomahawk::ViewPage* m_whatsHotPage;
 };
 
 

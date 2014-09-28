@@ -123,11 +123,7 @@ PeerInfo::PeerInfo( SipPlugin* parent, const QString& id )
 
 PeerInfo::~PeerInfo()
 {
-    Q_D( PeerInfo );
-
-    delete d->avatar;
-    delete d->fancyAvatar;
-    delete d_ptr;
+    tLog( LOGVERBOSE ) << Q_FUNC_INFO;
 }
 
 
@@ -229,6 +225,7 @@ PeerInfo::contactId() const
     return d_func()->contactId;
 }
 
+
 const QString
 PeerInfo::nodeId() const
 {
@@ -244,6 +241,7 @@ PeerInfo::nodeId() const
     return d->sipInfos.first().nodeId();
 }
 
+
 const QString
 PeerInfo::key() const
 {
@@ -251,7 +249,6 @@ PeerInfo::key() const
     // All sip infos share the same key
     return d_func()->sipInfos.first().key();
 }
-
 
 
 void
@@ -332,10 +329,8 @@ PeerInfo::setAvatar( const QPixmap& avatar )
     d->avatarHash = hash;
     d->avatarBuffer = ba;
 
-    delete d->avatar;
-    delete d->fancyAvatar;
-    d->avatar = 0;
-    d->fancyAvatar = 0;
+    d->avatar.reset();
+    d->fancyAvatar.reset();
 
     Q_ASSERT( !contactId().isEmpty() );
     TomahawkUtils::Cache::instance()->putData( "Sources", 7776000000 /* 90 days */, contactId(), ba );
@@ -347,22 +342,22 @@ PeerInfo::avatar( TomahawkUtils::ImageMode style, const QSize& size ) const
 {
     Q_D( const PeerInfo );
 
-    if ( !d->avatar )
+    if ( d->avatar.isNull() )
     {
         tDebug() << "Avatar for:" << id();
         Q_ASSERT( !contactId().isEmpty() );
         if ( d->avatarBuffer.isEmpty() && !contactId().isEmpty() )
             d->avatarBuffer = TomahawkUtils::Cache::instance()->getData( "Sources", contactId() ).toByteArray();
 
-        d->avatar = new QPixmap();
+        d->avatar.reset( new QPixmap() );
         if ( !d->avatarBuffer.isEmpty() )
             d->avatar->loadFromData( d->avatarBuffer );
 
         d->avatarBuffer.clear();
     }
 
-    if ( style == TomahawkUtils::RoundedCorners && d->avatar && !d->avatar->isNull() && !d->fancyAvatar )
-        d->fancyAvatar = new QPixmap( TomahawkUtils::createRoundedImage( QPixmap( *d->avatar ), QSize( 0, 0 ) ) );
+    if ( style == TomahawkUtils::RoundedCorners && d->avatar && !d->avatar->isNull() && d->fancyAvatar.isNull() )
+        d->fancyAvatar.reset( new QPixmap( TomahawkUtils::createRoundedImage( QPixmap( *d->avatar ), QSize( 0, 0 ) ) ) );
 
     QPixmap pixmap;
     if ( style == TomahawkUtils::RoundedCorners && d->fancyAvatar )

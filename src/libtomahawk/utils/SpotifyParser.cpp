@@ -19,21 +19,22 @@
 
 #include "SpotifyParser.h"
 
-#include <QtNetwork/QNetworkAccessManager>
-
-#include <qjson/parser.h>
+#include "jobview/JobStatusView.h"
+#include "jobview/JobStatusModel.h"
+#include "jobview/ErrorStatusMessage.h"
+#include "utils/Json.h"
+#include "utils/NetworkReply.h"
+#include "utils/TomahawkUtils.h"
+#include "utils/Logger.h"
+#include "utils/NetworkAccessManager.h"
 
 #include "Query.h"
 #include "SourceList.h"
 #include "DropJob.h"
 #include "DropJobNotifier.h"
 #include "ViewManager.h"
-#include "jobview/JobStatusView.h"
-#include "jobview/JobStatusModel.h"
-#include "jobview/ErrorStatusMessage.h"
-#include "utils/NetworkReply.h"
-#include "utils/TomahawkUtils.h"
-#include "utils/Logger.h"
+
+#include <QNetworkAccessManager>
 
 using namespace Tomahawk;
 
@@ -100,7 +101,7 @@ SpotifyParser::lookupUrl( const QString& rawLink )
 
     // TODO: Ignoring search and user querys atm
     // (spotify:(?:(?:artist|album|track|user:[^:]+:playlist):[a-zA-Z0-9]+|user:[^:]+|search:(?:[-\w$\.+!*'(),<>:\s]+|%[a-fA-F0-9\s]{2})+))
-    QRegExp rx( "(spotify:(?:(?:artist|album|track|user:[^:]+:playlist):[a-zA-Z0-9]+[^:]))" );
+    QRegExp rx( "(spotify:(?:(?:artist|album|track|user:[^:]+:playlist):[a-zA-Z0-9]+[^:\?]))" );
     if ( rx.indexIn( link, 0 ) != -1 )
     {
         link = rx.cap( 1 );
@@ -160,12 +161,14 @@ SpotifyParser::lookupSpotifyBrowse( const QString& link )
 
     if ( m_browseUri.contains( "spotify:user" ) )
         type = DropJob::Playlist;
-    if ( m_browseUri.contains( "spotify:artist" ) )
+    else if ( m_browseUri.contains( "spotify:artist" ) )
         type = DropJob::Artist;
-    if ( m_browseUri.contains( "spotify:album" ) )
+    else if ( m_browseUri.contains( "spotify:album" ) )
         type = DropJob::Album;
-    if ( m_browseUri.contains( "spotify:track" ) )
+    else if ( m_browseUri.contains( "spotify:track" ) )
         type = DropJob::Track;
+    else
+        return; // Type not supported.
 
     QUrl url;
 
@@ -175,13 +178,11 @@ SpotifyParser::lookupSpotifyBrowse( const QString& link )
          url = QUrl( QString( SPOTIFY_PLAYLIST_API_URL "/browse/%1/%2" ).arg( m_browseUri )
                                                                         .arg ( m_limit ) );
 
-    NetworkReply* reply = new NetworkReply( TomahawkUtils::nam()->get( QNetworkRequest( url ) ) );
+    NetworkReply* reply = new NetworkReply( Tomahawk::Utils::nam()->get( QNetworkRequest( url ) ) );
     connect( reply, SIGNAL( finished() ), SLOT( spotifyBrowseFinished() ) );
 
-#ifndef ENABLE_HEADLESS
     m_browseJob = new DropJobNotifier( pixmap(), "Spotify", type, reply );
     JobStatusView::instance()->model()->addJob( m_browseJob );
-#endif
 
     m_queries.insert( reply );
 }
@@ -195,22 +196,20 @@ SpotifyParser::lookupTrack( const QString& link )
 
     // we need Spotify URIs such as spotify:track:XXXXXX, so if we by chance get a http://open.spotify.com url, convert it
     QString uri = link;
-    if ( link.contains( "open.spotify.com" ) )
+    if ( link.contains( "open.spotify.com" ) || link.contains( "play.spotify.com" ) )
     {
         QString hash = link;
-        hash.replace( "http://open.spotify.com/track/", "" );
+        hash.replace( "http://open.spotify.com/track/", "" ).replace( "http://play.spotify.com/track/", "" );
         uri = QString( "spotify:track:%1" ).arg( hash );
     }
 
     QUrl url = QUrl( QString( "http://ws.spotify.com/lookup/1/.json?uri=%1" ).arg( uri ) );
 
-    NetworkReply* reply = new NetworkReply( TomahawkUtils::nam()->get( QNetworkRequest( url ) ) );
+    NetworkReply* reply = new NetworkReply( Tomahawk::Utils::nam()->get( QNetworkRequest( url ) ) );
     connect( reply, SIGNAL( finished() ), SLOT( spotifyTrackLookupFinished() ) );
 
-#ifndef ENABLE_HEADLESS
     DropJobNotifier* j = new DropJobNotifier( pixmap(), QString( "Spotify" ), DropJob::Track, reply );
     JobStatusView::instance()->model()->addJob( j );
-#endif
 
     m_queries.insert( reply );
 }
@@ -227,13 +226,13 @@ SpotifyParser::spotifyBrowseFinished()
 
     if ( r->reply()->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
         bool ok;
-        QVariantMap res = p.parse( r->reply(), &ok ).toMap();
+        QByteArray jsonData = r->reply()->readAll();
+        QVariantMap res = TomahawkUtils::parseJson( jsonData, &ok ).toMap();
 
         if ( !ok )
         {
-            tLog() << "Failed to parse json from Spotify browse item:" << p.errorString() << "On line" << p.errorLine();
+            tLog() << "Failed to parse json from Spotify browse item:" << jsonData;
             checkTrackFinished();
             return;
         }
@@ -299,13 +298,13 @@ SpotifyParser::spotifyTrackLookupFinished()
 
     if ( r->reply()->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
         bool ok;
-        QVariantMap res = p.parse( r->reply(), &ok ).toMap();
+        QByteArray jsonData = r->reply()->readAll();
+        QVariantMap res = TomahawkUtils::parseJson( jsonData, &ok ).toMap();
 
         if ( !ok )
         {
-            tLog() << "Failed to parse json from Spotify track lookup:" << p.errorString() << "On line" << p.errorLine();
+            tLog() << "Failed to parse json from Spotify track lookup:" << jsonData;
             checkTrackFinished();
             return;
         }
@@ -405,7 +404,7 @@ SpotifyParser::checkBrowseFinished()
 
             if ( spotifyAccountLoggedIn )
             {
-                QVariantHash creds = Accounts::SpotifyAccount::instance()->credentials();
+                QVariantMap creds = Accounts::SpotifyAccount::instance()->credentials();
                 spotifyUsername = creds.value( "username" ).toString();
             }
 

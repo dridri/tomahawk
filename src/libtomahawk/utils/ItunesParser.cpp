@@ -20,19 +20,20 @@
 
 #include "ItunesParser.h"
 
-#include <QtNetwork/QNetworkAccessManager>
-#include <QRegExp>
-
-#include <qjson/parser.h>
-
-#include "Query.h"
-#include "SourceList.h"
 #include "jobview/JobStatusView.h"
 #include "jobview/JobStatusModel.h"
 #include "jobview/ErrorStatusMessage.h"
+#include "utils/Json.h"
 #include "utils/NetworkReply.h"
 #include "utils/TomahawkUtils.h"
 #include "utils/Logger.h"
+#include "utils/NetworkAccessManager.h"
+
+#include "Query.h"
+#include "SourceList.h"
+
+#include <QNetworkAccessManager>
+#include <QRegExp>
 
 // Forward Declarations breaking QSharedPointer
 #if QT_VERSION < QT_VERSION_CHECK( 5, 0, 0 )
@@ -112,13 +113,11 @@ ItunesParser::lookupItunesUri( const QString& link )
         url = QUrl( QString( "http://ax.phobos.apple.com.edgesuite.net/WebObjects/MZStoreServices.woa/wa/wsLookup?id=%1&entity=song" ).arg( ( trackId.isEmpty() ? id : trackId ) ) );
     }
 
-    NetworkReply* reply = new NetworkReply( TomahawkUtils::nam()->get( QNetworkRequest( url ) ) );
+    NetworkReply* reply = new NetworkReply( Tomahawk::Utils::nam()->get( QNetworkRequest( url ) ) );
     connect( reply, SIGNAL( finished() ), SLOT( itunesResponseLookupFinished() ) );
 
-#ifndef ENABLE_HEADLESS
     DropJobNotifier* j = new DropJobNotifier( pixmap(), QString( "Itunes" ), type, reply );
     JobStatusView::instance()->model()->addJob( j );
-#endif
 
     m_queries.insert( reply );
 }
@@ -134,13 +133,13 @@ ItunesParser::itunesResponseLookupFinished()
 
     if ( r->reply()->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
         bool ok;
-        QVariantMap res = p.parse( r->reply(), &ok ).toMap();
+        QByteArray jsonData = r->reply()->readAll();
+        QVariantMap res = TomahawkUtils::parseJson( jsonData, &ok ).toMap();
 
         if ( !ok )
         {
-            tLog() << "Failed to parse json from Spotify track lookup:" << p.errorString() << "On line" << p.errorLine();
+            tLog() << "Failed to parse json from itunes track lookup:" << jsonData;
             checkTrackFinished();
             return;
         }
@@ -179,9 +178,7 @@ ItunesParser::itunesResponseLookupFinished()
     }
     else
     {
-#ifndef ENABLE_HEADLESS
         JobStatusView::instance()->model()->addJob( new ErrorStatusMessage( tr( "Error fetching iTunes information from the network!" ) ) );
-#endif
         tLog() << "Error in network request to Itunes for track decoding:" << r->reply()->errorString();
     }
 

@@ -44,7 +44,7 @@ public:
     virtual QString factoryId() const  { return "resolveraccount"; }
     virtual QString description() const { return QString(); }
     virtual QString prettyName() const { return QString(); } // Internal, not displayed
-    AccountTypes types() const { return AccountTypes( ResolverType ); };
+    AccountTypes types() const { return AccountTypes( ResolverType ); }
     virtual bool allowUserCreation() const { return false; }
 
     // Used to create a new resolver from a script on disk, either chosen by
@@ -92,7 +92,7 @@ public:
     virtual QString version() const;
 
     // Not relevant
-    virtual SipPlugin* sipPlugin() { return 0; }
+    virtual SipPlugin* sipPlugin( bool ) { return 0; }
     virtual Tomahawk::InfoSystem::InfoPluginPtr infoPlugin() { return Tomahawk::InfoSystem::InfoPluginPtr(); }
     virtual QWidget* aclWidget() { return 0; }
 

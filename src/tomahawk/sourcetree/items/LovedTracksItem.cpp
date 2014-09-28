@@ -26,8 +26,8 @@
 
 #include "playlist/FlexibleView.h"
 #include "playlist/TrackView.h"
-#include "playlist/LovedTracksModel.h"
-#include "playlist/PlaylistLargeItemDelegate.h"
+#include "playlist/TopLovedTracksModel.h"
+#include "playlist/TrackItemDelegate.h"
 
 #include "utils/ImageRegistry.h"
 #include "utils/Logger.h"
@@ -56,7 +56,7 @@ LovedTracksItem::text() const
     if ( !par )
         return QString( tr( "Top Loved Tracks" ) );
     else
-        return QString( tr( "Loved Tracks" ) );
+        return QString( tr( "Favorites" ) );
 }
 
 
@@ -76,13 +76,13 @@ LovedTracksItem::activate()
         FlexibleView* pv = new FlexibleView( ViewManager::instance()->widget() );
         pv->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::LovedPlaylist, TomahawkUtils::Original, QSize( 128, 128 ) ) );
 
-        LovedTracksModel* raModel = new LovedTracksModel( pv );
+        TopLovedTracksModel* raModel = new TopLovedTracksModel( pv );
         raModel->setTitle( text() );
 
-        PlaylistLargeItemDelegate* del = new PlaylistLargeItemDelegate( PlaylistLargeItemDelegate::LovedTracks, pv->trackView(), pv->trackView()->proxyModel() );
+        TrackItemDelegate* del = new TrackItemDelegate( TrackItemDelegate::LovedTracks, pv->trackView(), pv->trackView()->proxyModel() );
         pv->trackView()->setPlaylistItemDelegate( del );
 
-        pv->setEmptyTip( tr( "Sorry, we could not find any loved tracks!" ) );
+        pv->setEmptyTip( tr( "Sorry, we could not find any of your Favorites!" ) );
         if ( !par )
         {
             raModel->setDescription( tr( "The most loved tracks from all your friends" ) );

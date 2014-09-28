@@ -20,22 +20,22 @@
 
 #include "InfoSystemWorker.h"
 
+#include "utils/Logger.h"
+#include "utils/ShortLinkHelper.h"
+#include "utils/TomahawkUtils.h"
+#include "config.h"
+#include "GlobalActionManager.h"
+#include "InfoSystemCache.h"
+#include "PlaylistEntry.h"
 #include "utils/TomahawkUtils.h"
 #include "utils/Logger.h"
-
-#include "config.h"
-#include "InfoSystemCache.h"
-#include "GlobalActionManager.h"
-#include "PlaylistEntry.h"
+#include "utils/PluginLoader.h"
+#include "utils/Closure.h"
 #include "Source.h"
 
-
 #include <QCoreApplication>
-#include <QDir>
-#include <QLibrary>
 #include <QNetworkConfiguration>
 #include <QNetworkProxy>
-#include <QPluginLoader>
 
 namespace Tomahawk
 {
@@ -82,7 +82,7 @@ InfoSystemWorker::init( Tomahawk::InfoSystem::InfoSystemCache* cache )
     m_shortLinksWaiting = 0;
     m_cache = cache;
 
-    loadInfoPlugins( findInfoPlugins() );
+    loadInfoPlugins();
 }
 
 
@@ -165,80 +165,23 @@ InfoSystemWorker::removeInfoPlugin( Tomahawk::InfoSystem::InfoPluginPtr plugin )
 }
 
 
-QStringList
-InfoSystemWorker::findInfoPlugins()
-{
-    QStringList paths;
-    QList< QDir > pluginDirs;
-
-    QDir appDir( qApp->applicationDirPath() );
-#ifdef Q_WS_MAC
-    if ( appDir.dirName() == "MacOS" )
-    {
-        // Development convenience-hack
-        appDir.cdUp();
-        appDir.cdUp();
-        appDir.cdUp();
-    }
-#endif
-
-    QDir libDir( CMAKE_INSTALL_PREFIX "/lib" );
-
-    QDir lib64Dir( appDir );
-    lib64Dir.cdUp();
-    lib64Dir.cd( "lib64" );
-
-    pluginDirs << appDir << libDir << lib64Dir << QDir( qApp->applicationDirPath() );
-    foreach ( const QDir& pluginDir, pluginDirs )
-    {
-        tDebug() << Q_FUNC_INFO << "Checking directory for plugins:" << pluginDir;
-        foreach ( QString fileName, pluginDir.entryList( QStringList() << "*tomahawk_infoplugin_*.so" << "*tomahawk_infoplugin_*.dylib" << "*tomahawk_infoplugin_*.dll", QDir::Files ) )
-        {
-            if ( fileName.startsWith( "libtomahawk_infoplugin" ) )
-            {
-                const QString path = pluginDir.absoluteFilePath( fileName );
-                if ( !paths.contains( path ) )
-                    paths << path;
-            }
-        }
-    }
-
-    return paths;
-}
-
-
 void
-InfoSystemWorker::loadInfoPlugins( const QStringList& pluginPaths )
+InfoSystemWorker::loadInfoPlugins()
 {
-    tDebug() << Q_FUNC_INFO << "Attempting to load the following plugin paths:" << pluginPaths;
-
-    if ( pluginPaths.isEmpty() )
-        return;
-
-    foreach ( const QString fileName, pluginPaths )
+    QHash< QString, QObject* > plugins = Tomahawk::Utils::PluginLoader( "infoplugin" ).loadPlugins();
+    foreach ( QObject* plugin, plugins.values() )
     {
-        if ( !QLibrary::isLibrary( fileName ) )
-            continue;
-
-        tDebug() << Q_FUNC_INFO << "Trying to load plugin:" << fileName;
-
-        QPluginLoader loader( fileName );
-        QObject* plugin = loader.instance();
-        if ( !plugin )
-        {
-            tDebug() << Q_FUNC_INFO << "Error loading plugin:" << loader.errorString();
-            continue;
-        }
-
         InfoPlugin* infoPlugin = qobject_cast< InfoPlugin* >( plugin );
         if ( infoPlugin )
         {
-            tDebug() << Q_FUNC_INFO << "Loaded info plugin:" << loader.fileName();
-            infoPlugin->setFriendlyName( loader.fileName() );
+            tDebug() << Q_FUNC_INFO << "Loaded info plugin:" << plugins.key( plugin );
+            infoPlugin->setFriendlyName( plugins.key( plugin ) );
             addInfoPlugin( InfoPluginPtr( infoPlugin ) );
         }
         else
-            tDebug() << Q_FUNC_INFO << "Loaded invalid plugin:" << loader.fileName();
+        {
+            tDebug() << Q_FUNC_INFO << "Loaded invalid plugin:" << plugins.key( plugin );
+        }
     }
 }
 
@@ -283,8 +226,15 @@ InfoSystemWorker::getInfo( Tomahawk::InfoSystem::InfoRequestData requestData )
     QList< InfoPluginPtr > providers = determineOrderedMatches( requestData.type );
     if ( providers.isEmpty() )
     {
-        emit info( requestData, QVariant() );
-        checkFinished( requestData );
+        // We're not ready yet, retry this request in a bit
+        QTimer* timer = new QTimer();
+        timer->setInterval( 500 );
+        timer->setSingleShot( true );
+        NewClosure( timer, SIGNAL( timeout() ), this, SLOT( getInfo( Tomahawk::InfoSystem::InfoRequestData ) ), requestData );
+        timer->start();
+
+/*        emit info( requestData, QVariant() );
+        checkFinished( requestData );*/
         return;
     }
 
@@ -296,6 +246,7 @@ InfoSystemWorker::getInfo( Tomahawk::InfoSystem::InfoRequestData requestData )
     {
         if ( !ptr )
             continue;
+        // tDebug() << "Dispatching to worker:" << ptr->friendlyName() << requestData.type;
 
         foundOne = true;
 
@@ -340,7 +291,7 @@ InfoSystemWorker::getInfo( Tomahawk::InfoSystem::InfoRequestData requestData )
 void
 InfoSystemWorker::pushInfo( Tomahawk::InfoSystem::InfoPushData pushData )
 {
-    tDebug() << Q_FUNC_INFO << "type is " << pushData.type;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "type is " << pushData.type;
 
     if ( pushData.pushFlags != PushNoFlag )
     {
@@ -352,7 +303,7 @@ InfoSystemWorker::pushInfo( Tomahawk::InfoSystem::InfoPushData pushData )
         }
     }
 
-    tDebug() << Q_FUNC_INFO << "number of matching plugins: " << m_infoPushMap[ pushData.type ].size();
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "number of matching plugins: " << m_infoPushMap[ pushData.type ].size();
 
     Q_FOREACH( InfoPluginPtr ptr, m_infoPushMap[ pushData.type ] )
     {
@@ -365,7 +316,7 @@ InfoSystemWorker::pushInfo( Tomahawk::InfoSystem::InfoPushData pushData )
 void
 InfoSystemWorker::getShortUrl( Tomahawk::InfoSystem::InfoPushData pushData )
 {
-    tDebug() << Q_FUNC_INFO << "type is " << pushData.type;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "type is " << pushData.type;
     if ( !pushData.infoPair.second.canConvert< Tomahawk::InfoSystem::InfoStringHash >() )
     {
         QMetaObject::invokeMethod( this, "pushInfo", Qt::QueuedConnection, Q_ARG( Tomahawk::InfoSystem::InfoPushData, pushData ) );
@@ -388,8 +339,13 @@ InfoSystemWorker::getShortUrl( Tomahawk::InfoSystem::InfoPushData pushData )
 
     QUrl longUrl = GlobalActionManager::instance()->openLink( title, artist, album );
 
-    GlobalActionManager::instance()->shortenLink( longUrl, QVariant::fromValue< Tomahawk::InfoSystem::InfoPushData >( pushData ) );
-    connect( GlobalActionManager::instance(), SIGNAL( shortLinkReady( QUrl, QUrl, QVariant ) ), this, SLOT( shortLinkReady( QUrl, QUrl, QVariant ) ), Qt::UniqueConnection );
+    Tomahawk::Utils::ShortLinkHelper* slh = new Tomahawk::Utils::ShortLinkHelper();
+    connect( slh, SIGNAL( shortLinkReady( QUrl, QUrl, QVariant ) ),
+             SLOT( shortLinkReady( QUrl, QUrl, QVariant ) ) );
+    connect( slh, SIGNAL( done() ),
+             slh, SLOT( deleteLater() ),
+             Qt::QueuedConnection );
+    slh->shortenLink( longUrl, QVariant::fromValue< Tomahawk::InfoSystem::InfoPushData >( pushData ) );
     m_shortLinksWaiting++;
 }
 
@@ -397,7 +353,7 @@ InfoSystemWorker::getShortUrl( Tomahawk::InfoSystem::InfoPushData pushData )
 void
 InfoSystemWorker::shortLinkReady( QUrl longUrl, QUrl shortUrl, QVariant callbackObj )
 {
-    tDebug() << Q_FUNC_INFO << "long url = " << longUrl << ", shortUrl = " << shortUrl;
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "long url = " << longUrl << ", shortUrl = " << shortUrl;
     m_shortLinksWaiting--;
     if ( !m_shortLinksWaiting )
         disconnect( GlobalActionManager::instance(), SIGNAL( shortLinkReady( QUrl, QUrl, QVariant ) ) );
@@ -417,7 +373,7 @@ InfoSystemWorker::shortLinkReady( QUrl longUrl, QUrl shortUrl, QVariant callback
         pushData.infoPair.first = flagProps;
     }
 
-    tDebug() << Q_FUNC_INFO << "pushInfoPair first is: " << pushData.infoPair.first.keys();
+    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "pushInfoPair first is: " << pushData.infoPair.first.keys();
 
     QMetaObject::invokeMethod( this, "pushInfo", Qt::QueuedConnection, Q_ARG( Tomahawk::InfoSystem::InfoPushData, pushData ) );
 }

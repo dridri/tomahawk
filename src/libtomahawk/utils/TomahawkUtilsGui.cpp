@@ -22,6 +22,7 @@
 
 #include "playlist/PlayableItem.h"
 #include "config.h"
+#include "DpiScaler.h"
 #include "Query.h"
 #include "Result.h"
 #include "Source.h"
@@ -46,7 +47,7 @@
     #include <libqnetwm/netwm.h>
 #endif
 
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     #include <windows.h>
     #include <windowsx.h>
     #include <shellapi.h>
@@ -61,6 +62,7 @@ extern void qt_blurImage( QPainter *p, QImage &blurImage, qreal radius, bool qua
 
 namespace TomahawkUtils
 {
+static QFont s_systemFont;
 static int s_defaultFontSize = 0;
 static int s_defaultFontHeight = 0;
 
@@ -78,7 +80,7 @@ createDragPixmap( MediaType type, int itemCount )
         xCount = 5;
         size = 16;
     }
-    else if( itemCount > 9 )
+    else if ( itemCount > 9 )
     {
         xCount = 4;
         size = 22;
@@ -123,7 +125,6 @@ createDragPixmap( MediaType type, int itemCount )
     int y = 0;
     for ( int i = 0; i < itemCount; ++i )
     {
-
         painter.drawPixmap( x, y, pixmap );
 
         x += size + 1;
@@ -229,6 +230,47 @@ unmarginLayout( QLayout* layout )
 }
 
 
+void
+fixLayoutMargins( QLayout* layout, QWidget* parent )
+{
+    if ( parent->property( "scalingDone" ).toBool() )
+        return;
+
+    DpiScaler scaler( parent );
+    layout->setContentsMargins( scaler.scaled( layout->contentsMargins() ) );
+    layout->setSpacing( scaler.scaledX( layout->spacing() ) );
+
+    parent->setProperty( "scalingDone", true );
+    parent->setContentsMargins( scaler.scaled( parent->contentsMargins() ) );
+
+    for ( int i = 0; i < layout->count(); i++ )
+    {
+        QLayout* childLayout = layout->itemAt( i )->layout();
+        if ( childLayout )
+            fixLayoutMargins( childLayout, parent );
+    }
+}
+
+
+void
+fixMargins( QWidget* widget )
+{
+    if ( widget->layout() )
+    {
+        fixLayoutMargins( widget->layout(), widget );
+    }
+
+    foreach ( QObject* c, widget->children() )
+    {
+        QWidget* w = qobject_cast<QWidget*>(c);
+        if ( w )
+        {
+            fixMargins( w );
+        }
+    }
+}
+
+
 QWidget*
 tomahawkWindow()
 {
@@ -282,7 +324,7 @@ bringToFront()
 
         XSendEvent( QX11Info::display(), RootWindow( QX11Info::display(), DefaultScreen( QX11Info::display() ) ), False, SubstructureRedirectMask | SubstructureNotifyMask, &e );
     }
-#elif defined(Q_WS_WIN)
+#elif defined(Q_OS_WIN)
     {
         qDebug() << Q_FUNC_INFO;
 
@@ -300,8 +342,8 @@ bringToFront()
         int  idActive      = GetWindowThreadProcessId(hwndActiveWin, NULL);
         if ( AttachThreadInput(GetCurrentThreadId(), idActive, TRUE) )
         {
-            SetForegroundWindow( wid );
-            SetFocus( wid );
+            SetForegroundWindow( (HWND)wid );
+            SetFocus( (HWND)wid );
             AttachThreadInput(GetCurrentThreadId(), idActive, FALSE);
         }
     }
@@ -397,6 +439,20 @@ setDefaultFontSize( int points )
 }
 
 
+QFont
+systemFont()
+{
+    return s_systemFont;
+}
+
+
+void
+setSystemFont( QFont font )
+{
+    s_systemFont = font;
+}
+
+
 QSize
 defaultIconSize()
 {
@@ -410,9 +466,9 @@ alphaBlend( const QColor& colorFrom, const QColor& colorTo, float opacity )
 {
     opacity = qMax( (float)0.3, opacity );
     int r = colorFrom.red(), g = colorFrom.green(), b = colorFrom.blue();
-    r = opacity * r + ( 1 - opacity ) * colorTo.red();
-    g = opacity * g + ( 1 - opacity ) * colorTo.green();
-    b = opacity * b + ( 1 - opacity ) * colorTo.blue();
+    r = opacity * r + ( 1.0 - opacity ) * colorTo.red();
+    g = opacity * g + ( 1.0 - opacity ) * colorTo.green();
+    b = opacity * b + ( 1.0 - opacity ) * colorTo.blue();
 
     return QColor( r, g, b );
 }
@@ -422,6 +478,11 @@ QPixmap
 defaultPixmap( ImageType type, ImageMode mode, const QSize& size )
 {
     QPixmap pixmap;
+    if ( size.width() < 0 || size.height() < 0 )
+    {
+        Q_ASSERT( false );
+        return pixmap;
+    }
 
     switch ( type )
     {
@@ -438,16 +499,16 @@ defaultPixmap( ImageType type, ImageMode mode, const QSize& size )
             if ( mode == Grid )
                 pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/artist-placeholder-grid.svg", size );
             else
-                pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/artist-icon.svg", size );
+                pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/artist-placeholder-grid.svg", size );
             break;
 
         case DefaultTrackImage:
             if ( mode == Grid )
                 pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/track-placeholder-grid.svg", size );
             else if ( mode == RoundedCorners )
-                pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/track-icon.svg", size, TomahawkUtils::RoundedCorners );
+                pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/track-placeholder-grid.svg", size, TomahawkUtils::RoundedCorners );
             else
-                pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/track-icon.svg", size );
+                pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/track-placeholder-grid.svg", size );
             break;
 
         case DefaultSourceAvatar:
@@ -481,70 +542,70 @@ defaultPixmap( ImageType type, ImageMode mode, const QSize& size )
             break;
 
         case PlayButton:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/play-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/play.svg", size, TomahawkUtils::Original, 0.8, Qt::white );
             break;
         case PlayButtonPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/play-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/play.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
 
         case PauseButton:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/pause-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/pause.svg", size, TomahawkUtils::Original, 0.8, Qt::white );
             break;
         case PauseButtonPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/pause-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/pause.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
 
         case PrevButton:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/back-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/back.svg", size, TomahawkUtils::Original, 0.8, Qt::white );
             break;
         case PrevButtonPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/back-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/back.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
 
         case NextButton:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/skip-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/forward.svg", size, TomahawkUtils::Original, 0.8, Qt::white );
             break;
         case NextButtonPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/skip-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/forward.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
 
         case ShuffleOff:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle-off-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle.svg", size, TomahawkUtils::Original, 0.7, Qt::white );
             break;
         case ShuffleOffPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle-off-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
         case ShuffleOn:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle-on-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
         case ShuffleOnPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle-on-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/shuffle.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
 
         case RepeatOne:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat-1-on-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
         case RepeatOnePressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat-1-on-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
         case RepeatAll:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat-all-on-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
         case RepeatAllPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat-all-on-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
         case RepeatOff:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat-off-rest.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat.svg", size, TomahawkUtils::Original, 0.7, Qt::white );
             break;
         case RepeatOffPressed:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat-off-pressed.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/repeat.svg", size, TomahawkUtils::Original, 1.0, Qt::white );
             break;
 
         case VolumeMuted:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/volume-icon-muted.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/volume-icon-muted.svg", size, TomahawkUtils::Original, 0.7, Qt::white );
             break;
         case VolumeFull:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/volume-icon-full.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/volume-icon-full.svg", size, TomahawkUtils::Original, 0.7, Qt::white );
             break;
 
         case Share:
@@ -655,7 +716,7 @@ defaultPixmap( ImageType type, ImageMode mode, const QSize& size )
             pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/advanced-settings.svg", size );
             break;
         case AccountSettings:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/account-settings.svg", size );
+            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/plugins.svg", size );
             break;
         case MusicSettings:
             pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/music-settings.svg", size );
@@ -720,16 +781,13 @@ defaultPixmap( ImageType type, ImageMode mode, const QSize& size )
             pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/outbox.svg", size );
             break;
 
-        case NetworkActivity:
-            pixmap = ImageRegistry::instance()->pixmap( RESPATH "images/network-activity.svg", size );
-            break;
-
         default:
             break;
     }
 
     if ( pixmap.isNull() )
     {
+        tDebug() << "Invalid image for type:" << type << size;
         Q_ASSERT( false );
         return QPixmap();
     }
@@ -758,7 +816,7 @@ prepareStyleOption( QStyleOptionViewItemV4* option, const QModelIndex& index, Pl
     else
     {
         float opacity = 0.0;
-        if ( !item->query()->results().isEmpty() && item->query()->results().first()->isOnline() )
+        if ( item->query() && !item->query()->results().isEmpty() && item->query()->results().first()->isOnline() )
             opacity = item->query()->results().first()->score();
 
         opacity = qMax( (float)0.3, opacity );
@@ -936,6 +994,104 @@ squareCenterPixmap( const QPixmap& sourceImage )
 }
 
 
+QPixmap
+tinted( const QPixmap& p, const QColor& tint )
+{
+    QImage resultImage( p.size(), QImage::Format_ARGB32_Premultiplied );
+    QPainter painter( &resultImage );
+    painter.drawPixmap( 0, 0, p );
+    painter.setCompositionMode( QPainter::CompositionMode_Screen );
+    painter.fillRect( resultImage.rect(), tint );
+    painter.end();
+
+    resultImage.setAlphaChannel( p.toImage().alphaChannel() );
+    return QPixmap::fromImage( resultImage );
+}
+
+
+QImage
+blurred( const QImage& image, const QRect& rect, int radius, bool alphaOnly, bool blackWhite )
+{
+    int tab[] = { 14, 10, 8, 6, 5, 5, 4, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2 };
+    int alpha = (radius < 1)  ? 16 : (radius > 17) ? 1 : tab[radius-1];
+
+    QImage result = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    if ( blackWhite )
+    {
+        for ( int i = 0; i < result.width(); ++i )
+        {
+            for (int j = 0; j < result.height(); ++j)
+            {
+                const QRgb col = result.pixel(i, j);
+                const int gray = qGray(col);
+                result.setPixel(i, j, qRgb(gray*0.3, gray*0.3, gray*0.3));
+            }
+        }
+    }
+
+    int r1 = rect.top();
+    int r2 = rect.bottom();
+    int c1 = rect.left();
+    int c2 = rect.right();
+
+    int bpl = result.bytesPerLine();
+    int rgba[4];
+    unsigned char* p;
+
+    int i1 = 0;
+    int i2 = 3;
+
+    if (alphaOnly)
+        i1 = i2 = (QSysInfo::ByteOrder == QSysInfo::BigEndian ? 0 : 3);
+
+    for (int col = c1; col <= c2; col++) {
+        p = result.scanLine(r1) + col * 4;
+        for (int i = i1; i <= i2; i++)
+            rgba[i] = p[i] << 4;
+
+        p += bpl;
+        for (int j = r1; j < r2; j++, p += bpl)
+            for (int i = i1; i <= i2; i++)
+                p[i] = (rgba[i] += ((p[i] << 4) - rgba[i]) * alpha / 16) >> 4;
+    }
+
+    for (int row = r1; row <= r2; row++) {
+        p = result.scanLine(row) + c1 * 4;
+        for (int i = i1; i <= i2; i++)
+            rgba[i] = p[i] << 4;
+
+        p += 4;
+        for (int j = c1; j < c2; j++, p += 4)
+            for (int i = i1; i <= i2; i++)
+                p[i] = (rgba[i] += ((p[i] << 4) - rgba[i]) * alpha / 16) >> 4;
+    }
+
+    for (int col = c1; col <= c2; col++) {
+        p = result.scanLine(r2) + col * 4;
+        for (int i = i1; i <= i2; i++)
+            rgba[i] = p[i] << 4;
+
+        p -= bpl;
+        for (int j = r1; j < r2; j++, p -= bpl)
+            for (int i = i1; i <= i2; i++)
+                p[i] = (rgba[i] += ((p[i] << 4) - rgba[i]) * alpha / 16) >> 4;
+    }
+
+    for (int row = r1; row <= r2; row++) {
+        p = result.scanLine(row) + c2 * 4;
+        for (int i = i1; i <= i2; i++)
+            rgba[i] = p[i] << 4;
+
+        p -= 4;
+        for (int j = c1; j < c2; j++, p -= 4)
+            for (int i = i1; i <= i2; i++)
+                p[i] = (rgba[i] += ((p[i] << 4) - rgba[i]) * alpha / 16) >> 4;
+    }
+
+    return result;
+}
+
+
 void
 drawCompositedPopup( QWidget* widget,
                      const QPainterPath& outline,
@@ -944,7 +1100,7 @@ drawCompositedPopup( QWidget* widget,
                      qreal opacity )
 {
     bool compositingWorks = true;
-#if defined(Q_WS_WIN)   //HACK: Windows refuses to perform compositing so we must fake it
+#if defined(Q_OS_WIN)   //HACK: Windows refuses to perform compositing so we must fake it
     compositingWorks = false;
 #elif defined(Q_WS_X11)
     if ( !QX11Info::isCompositingManagerRunning() )

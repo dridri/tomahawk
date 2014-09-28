@@ -26,12 +26,9 @@
 #include "JobStatusDelegate.h"
 #include "utils/Logger.h"
 #include "Source.h"
-
-#ifndef ENABLE_HEADLESS
 #include "PipelineStatusItem.h"
 #include "TransferStatusItem.h"
 #include "LatchedStatusItem.h"
-#endif
 
 #include <QHeaderView>
 #include <QVBoxLayout>
@@ -42,9 +39,39 @@ using namespace Tomahawk;
 
 
 JobStatusView* JobStatusView::s_instance = 0;
+QList< QPointer< JobStatusItem > > s_jobItems;
+
+void
+JobStatusView::addJob( JobStatusItem* item )
+{
+    if ( s_instance == 0 || s_instance->model() == 0 )
+    {
+        s_jobItems.append( QPointer<JobStatusItem>( item ) );
+    }
+    else
+    {
+        s_instance->model()->addJob( item );
+    }
+}
+
+
+void
+JobStatusView::addJob( const QPointer<JobStatusItem>& item )
+{
+    if ( s_instance == 0 || s_instance->model() == 0 )
+    {
+        s_jobItems.append( item );
+    }
+    else
+    {
+        s_instance->model()->addJob( item.data() );
+    }
+}
+
 
 JobStatusView::JobStatusView( AnimatedSplitter* parent )
     : AnimatedWidget( parent )
+    , m_model( 0 )
     , m_parent( parent )
     , m_cachedHeight( -1 )
 {
@@ -65,11 +92,9 @@ JobStatusView::JobStatusView( AnimatedSplitter* parent )
     m_view->setAttribute( Qt::WA_MacShowFocusRect, 0 );
     m_view->setUniformItemSizes( false );
 
-#ifndef ENABLE_HEADLESS
     new PipelineStatusManager( this );
     new TransferStatusManager( this );
     new LatchedStatusManager( this );
-#endif
 
     setMouseTracking( true );
     m_view->setMouseTracking( true );
@@ -89,6 +114,15 @@ JobStatusView::setModel( JobStatusSortModel* m )
     connect( m_view->model(), SIGNAL( customDelegateJobInserted( int, JobStatusItem* ) ), this, SLOT( customDelegateJobInserted( int, JobStatusItem* ) ) );
     connect( m_view->model(), SIGNAL( customDelegateJobRemoved( int ) ), this, SLOT( customDelegateJobRemoved( int ) ) );
     connect( m_view->model(), SIGNAL( refreshDelegates() ), this, SLOT( refreshDelegates() ) );
+
+    foreach ( const QPointer<JobStatusItem> item, s_jobItems )
+    {
+        if ( !item.isNull() )
+        {
+            m_model->addJob( item.data() );
+        }
+    }
+    s_jobItems.clear();
 }
 
 

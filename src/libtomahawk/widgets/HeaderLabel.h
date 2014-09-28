@@ -19,16 +19,14 @@
 #ifndef HEADERLABEL_H
 #define HEADERLABEL_H
 
-#include <QLabel>
-#include <QTime>
-
+#include "ClickableLabel.h"
 #include "DllMacro.h"
 
 /**
  * \class HeaderLabel
  * \brief A styled label for use in headers.
  */
-class DLLEXPORT HeaderLabel : public QLabel
+class DLLEXPORT HeaderLabel : public ClickableLabel
 {
 Q_OBJECT
 
@@ -41,25 +39,12 @@ public:
 
     static int defaultFontSize();
 
-signals:
-    void clicked();
-    void resized( const QPoint& delta );
-
 protected:
 //    void changeEvent( QEvent* e );
     void paintEvent( QPaintEvent* event );
 
-    void mousePressEvent( QMouseEvent* event );
-    void mouseReleaseEvent( QMouseEvent* event );
-    void mouseMoveEvent( QMouseEvent* event );
-
 private:
     QWidget* m_parent;
-    QTime m_time;
-
-    QPoint m_dragPoint;
-    bool m_pressed;
-    bool m_moved;
 };
 
 #endif // HEADERLABEL_H

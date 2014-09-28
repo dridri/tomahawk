@@ -49,6 +49,7 @@ public:
 public slots:
     void showOfflineSources( bool offlineSourcesShown );
 
+    void renamePlaylist( const Tomahawk::playlist_ptr& playlist );
     void renamePlaylist();
 
     void update( const QModelIndex &index );
@@ -86,6 +87,8 @@ private slots:
     void onSelectionChanged();
 
     void onDeletePlaylistResult( bool result );
+
+    void shortLinkReady( const Tomahawk::playlist_ptr& playlist, const QUrl& shortUrl );
 
 protected:
     void drawRow( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const;

@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012  Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *
@@ -21,16 +21,17 @@
 #ifndef TOMAHAWK_SETTINGS_H
 #define TOMAHAWK_SETTINGS_H
 
-#include "network/Enums.h"
-
 #include "DllMacro.h"
 #include "Typedefs.h"
+
+#include "network/Enums.h"
+#include "AtticaManager.h"
 
 #include <QSettings>
 #include <QNetworkProxy>
 #include <QStringList>
 
-#define TOMAHAWK_SETTINGS_VERSION 15
+#define TOMAHAWK_SETTINGS_VERSION 16
 
 /**
  * Convenience wrapper around QSettings for tomahawk-specific config
@@ -48,9 +49,9 @@ public:
     void applyChanges() { emit changed(); }
 
     /// General settings
-    virtual QString storageCacheLocation() const;
+    QString storageCacheLocation() const;
 
-    virtual QStringList scannerPaths() const; /// QDesktopServices::MusicLocation in TomahawkSettingsGui
+    QStringList scannerPaths() const; /// QDesktopServices::MusicLocation in TomahawkSettingsGui
     void setScannerPaths( const QStringList& paths );
     bool hasScannerPaths() const;
     uint scannerTime() const;
@@ -58,6 +59,8 @@ public:
 
     uint infoSystemCacheVersion() const;
     void setInfoSystemCacheVersion( uint version );
+    uint genericCacheVersion() const;
+    void setGenericCacheVersion( uint version );
 
     bool watchForChanges() const;
     void setWatchForChanges( bool watch );
@@ -142,6 +145,9 @@ public:
     bool httpEnabled() const; /// true by default
     void setHttpEnabled( bool enable );
 
+    bool httpBindAll() const; /// false by default
+    void setHttpBindAll( bool bindAll );
+
     bool crashReporterEnabled() const; /// true by default
     void setCrashReporterEnabled( bool enable );
 
@@ -222,9 +228,22 @@ public:
     void setLastChartIds( const QMap<QString, QVariant>& ids );
     QMap<QString, QVariant> lastChartIds();
 
+    AtticaManager::StateHash atticaResolverStates() const;
+    void setAtticaResolverStates( const AtticaManager::StateHash states );
+
+    void setAtticaResolverState( const QString& resolver, AtticaManager::ResolverState state );
+    void removeAtticaResolverState( const QString& resolver );
+
+    // Playdar TLS Certificate and Key.
+    // TODO: Store in Keychain
+    QByteArray playdarCertificate() const;
+    void setPlaydarCertificate( const QByteArray& cert );
+    QByteArray playdarKey() const;
+    void setPlaydarKey( const QByteArray& key );
+
 signals:
     void changed();
-    void recentlyPlayedPlaylistAdded( const QString& playlistId, int sourceId  );
+    void recentlyPlayedPlaylistAdded( const QString& playlistId, int sourceId );
 
 private slots:
     void updateIndex();
@@ -238,6 +257,7 @@ private:
     static TomahawkSettings* s_instance;
 };
 
-Q_DECLARE_METATYPE( TomahawkSettings::PrivateListeningMode );
+Q_DECLARE_METATYPE( TomahawkSettings::PrivateListeningMode )
+Q_DECLARE_METATYPE( AtticaManager::StateHash )
 
 #endif

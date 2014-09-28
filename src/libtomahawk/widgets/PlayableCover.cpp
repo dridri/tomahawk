@@ -28,6 +28,9 @@
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/Logger.h"
 
+#include <QApplication>
+#include <QDrag>
+#include <QMimeData>
 #include <QPainter>
 
 using namespace Tomahawk;
@@ -35,6 +38,8 @@ using namespace Tomahawk;
 PlayableCover::PlayableCover( QWidget* parent )
     : QLabel( parent )
     , m_showText( false )
+    , m_showControls( true )
+    , m_type( Track )
 {
     setMouseTracking( true );
 
@@ -64,7 +69,8 @@ PlayableCover::enterEvent( QEvent* event )
 {
     QLabel::enterEvent( event );
 
-    m_button->show();
+    if ( m_showControls )
+        m_button->show();
 }
 
 
@@ -82,6 +88,14 @@ PlayableCover::resizeEvent( QResizeEvent* event )
 {
     QLabel::resizeEvent( event );
     m_button->move( contentsRect().center() - QPoint( 22, 23 ) );
+}
+
+
+void
+PlayableCover::mousePressEvent( QMouseEvent* event )
+{
+    if ( event->button() == Qt::LeftButton )
+         m_dragStartPosition = event->pos();
 }
 
 
@@ -110,6 +124,105 @@ PlayableCover::mouseMoveEvent( QMouseEvent* event )
         m_hoveredRect = QRect();
         repaint();
     }
+
+    if ( !( event->buttons() & Qt::LeftButton ) )
+        return;
+    if ( ( event->pos() - m_dragStartPosition ).manhattanLength() < QApplication::startDragDistance() )
+        return;
+
+    QByteArray resultData;
+    QDataStream resultStream( &resultData, QIODevice::WriteOnly );
+    QMimeData* mimeData = new QMimeData();
+    QPixmap pixmap;
+    const int pixHeight = TomahawkUtils::defaultFontHeight() * 3;
+    const QSize pixSize = QSize( pixHeight, pixHeight );
+
+    switch ( m_type )
+    {
+        case Artist:
+            if ( m_artist )
+            {
+                pixmap = m_artist->cover( pixSize, false );
+                resultStream << m_artist->name();
+                mimeData->setData( "application/tomahawk.metadata.artist", resultData );
+            }
+            else
+            {
+                delete mimeData;
+                return;
+            }
+            break;
+
+        case Album:
+            if ( m_album && !m_album->name().isEmpty() )
+            {
+                pixmap = m_album->cover( pixSize, false );
+                resultStream << m_album->artist()->name();
+                resultStream << m_album->name();
+                mimeData->setData( "application/tomahawk.metadata.album", resultData );
+            }
+            else
+            {
+                if ( m_artist )
+                {
+                    pixmap = m_artist->cover( pixSize, false );
+                    resultStream << m_artist->name();
+                    mimeData->setData( "application/tomahawk.metadata.artist", resultData );
+                }
+                else
+                {
+                    delete mimeData;
+                    return;
+                }
+            }
+            break;
+
+        case Track:
+            if ( m_query )
+            {
+                pixmap = m_query->track()->cover( pixSize, false );
+                resultStream << QString( "application/tomahawk.query.list" ) << qlonglong( &m_query );
+                mimeData->setData( "application/tomahawk.mixed", resultData );
+            }
+            else
+            {
+                delete mimeData;
+                return;
+            }
+            break;
+    }
+
+    QDrag* drag = new QDrag( this );
+    drag->setMimeData( mimeData );
+    drag->setPixmap( pixmap );
+    drag->setHotSpot( QPoint( -20, -20 ) );
+
+    drag->exec( Qt::CopyAction, Qt::CopyAction );
+}
+
+
+void
+PlayableCover::mouseDoubleClickEvent( QMouseEvent* event )
+{
+    switch ( m_type )
+    {
+        case Artist:
+            if ( m_artist )
+               ViewManager::instance()->show( m_artist );
+            break;
+
+        case Album:
+            if ( m_album && !m_album->name().isEmpty() )
+                ViewManager::instance()->show( m_album );
+            else if ( m_artist )
+                ViewManager::instance()->show( m_artist );
+            break;
+
+        case Track:
+            if ( m_query )
+                ViewManager::instance()->show( m_query );
+            break;
+    }
 }
 
 
@@ -122,13 +235,7 @@ PlayableCover::mouseReleaseEvent( QMouseEvent* event )
     {
         if ( rect.contains( event->pos() ) )
         {
-            if ( m_artist )
-                ViewManager::instance()->show( m_artist );
-            else if ( m_album )
-                ViewManager::instance()->show( m_album->artist() );
-            else if ( m_query )
-                ViewManager::instance()->show( m_query->queryTrack()->artistPtr() );
-
+            mouseDoubleClickEvent( event );
             return;
         }
     }
@@ -140,12 +247,26 @@ PlayableCover::contextMenuEvent( QContextMenuEvent* event )
 {
     m_contextMenu->clear();
 
-    if ( m_artist )
-        m_contextMenu->setArtist( m_artist );
-    else if ( m_album )
-        m_contextMenu->setAlbum( m_album );
-    else
-        m_contextMenu->setQuery( m_query );
+    switch ( m_type )
+    {
+        case Artist:
+            if ( m_artist )
+                m_contextMenu->setArtist( m_artist );
+            break;
+
+        case Album:
+            if ( m_album && !m_album->name().isEmpty() )
+                m_contextMenu->setAlbum( m_album );
+            else if ( m_artist )
+                m_contextMenu->setArtist( m_artist );
+
+            break;
+
+        case Track:
+            if ( m_query )
+                m_contextMenu->setQuery( m_query );
+            break;
+    }
 
     m_contextMenu->exec( event->globalPos() );
 }
@@ -154,7 +275,7 @@ PlayableCover::contextMenuEvent( QContextMenuEvent* event )
 void
 PlayableCover::setPixmap( const QPixmap& pixmap )
 {
-    m_pixmap = TomahawkUtils::createRoundedImage( pixmap, size() );
+    m_pixmap = pixmap; // TomahawkUtils::createRoundedImage( pixmap, size() );
     repaint();
 }
 
@@ -298,18 +419,32 @@ PlayableCover::paintEvent( QPaintEvent* event )
 void
 PlayableCover::onClicked()
 {
-    if ( m_artist )
-        AudioEngine::instance()->playItem( m_artist );
-    else if ( m_album )
-        AudioEngine::instance()->playItem( m_album );
-    else if ( m_query )
-        AudioEngine::instance()->playItem( Tomahawk::playlistinterface_ptr(), m_query );
+    switch ( m_type )
+    {
+        case Artist:
+            if ( m_artist )
+                AudioEngine::instance()->playItem( m_artist );
+            break;
+
+        case Album:
+            if ( m_album && !m_album->name().isEmpty() )
+                AudioEngine::instance()->playItem( m_album );
+            else if ( m_artist )
+                AudioEngine::instance()->playItem( m_artist );
+            break;
+
+        case Track:
+            if ( m_query )
+                AudioEngine::instance()->playItem( Tomahawk::playlistinterface_ptr(), m_query );
+            break;
+    }
 }
 
 
 void
 PlayableCover::setArtist( const Tomahawk::artist_ptr& artist )
 {
+    m_type = Artist;
     m_artist = artist;
     repaint();
 }
@@ -318,6 +453,7 @@ PlayableCover::setArtist( const Tomahawk::artist_ptr& artist )
 void
 PlayableCover::setAlbum( const Tomahawk::album_ptr& album )
 {
+    m_type = Album;
     m_album = album;
     repaint();
 }
@@ -327,12 +463,34 @@ void
 PlayableCover::setQuery( const Tomahawk::query_ptr& query )
 {
     m_query = query;
+
+    if ( query )
+    {
+        m_artist = query->track()->artistPtr();
+        m_album = query->track()->albumPtr();
+    }
     repaint();
 }
 
 
-void PlayableCover::setShowText( bool b )
+void
+PlayableCover::setShowText( bool b )
 {
     m_showText = b;
     repaint();
+}
+
+
+void
+PlayableCover::setShowControls( bool b )
+{
+    m_showControls = b;
+    repaint();
+}
+
+
+void
+PlayableCover::setType( DisplayType type )
+{
+    m_type = type;
 }

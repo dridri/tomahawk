@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2011, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
  *   Copyright 2013,      Uwe L. Korn <uwelk@xhochy.com>
@@ -24,13 +24,18 @@
 
 #include "DllMacro.h"
 #include "Typedefs.h"
+#include "UrlHandler.h"
+#include "database/fuzzyindex/FuzzyIndex.h"
+#include "utils/NetworkReply.h"
 
 #include <boost/function.hpp>
 
 #include <QObject>
 #include <QVariantMap>
 
+
 class JSResolver;
+Q_DECLARE_METATYPE( boost::function< void( QSharedPointer< QIODevice >& ) >  )
 
 class DLLEXPORT JSResolverHelper : public QObject
 {
@@ -38,25 +43,79 @@ Q_OBJECT
 
 public:
     JSResolverHelper( const QString& scriptPath, JSResolver* parent );
+
+    /**
+     * INTERNAL USE ONLY!
+     */
     void setResolverConfig( const QVariantMap& config );
 
-    // Return a HMAC (md5) signature of the input text with the desired key
-    Q_INVOKABLE QString hmac( const QByteArray& key, const QByteArray& input );
-    Q_INVOKABLE QString md5( const QByteArray& input );
+    /**
+     * Get the instance unique account id for this resolver.
+     *
+     * INTERNAL USE ONLY!
+     */
+    Q_INVOKABLE QString acountId();
 
     Q_INVOKABLE void addCustomUrlHandler( const QString& protocol, const QString& callbackFuncName, const QString& isAsynchronous = "false" );
     Q_INVOKABLE void reportStreamUrl( const QString& qid, const QString& streamUrl );
+    Q_INVOKABLE void reportStreamUrl( const QString& qid, const QString& streamUrl, const QVariantMap& headers );
 
-    Q_INVOKABLE QByteArray base64Encode( const QByteArray& input );
-    Q_INVOKABLE QByteArray base64Decode( const QByteArray& input );
+    /**
+     * Retrieve metadata for a media stream.
+     *
+     * Current suported transport protocols are:
+     *  * HTTP
+     *  * HTTPS
+     *
+     * This method is asynchronous and will call
+     *     Tomahawk.retrievedMetadata(metadataId, metadata, error)
+     * on completion. This method is an internal variant, JavaScript resolvers
+     * are advised to use Tomahawk.retrieveMetadata(url, options, callback).
+     *
+     * INTERNAL USE ONLY!
+     */
+    Q_INVOKABLE void nativeRetrieveMetadata( int metadataId, const QString& url,
+                                             const QString& mimetype,
+                                             int sizehint,
+                                             const QVariantMap& options );
 
-    void customIODeviceFactory( const Tomahawk::result_ptr& result,
-                                boost::function< void( QSharedPointer< QIODevice >& ) > callback ); // async
+    /**
+     * Native handler for asynchronous HTTP requests.
+     *
+     * This handler shall only be used if we cannot achieve the request with
+     * XMLHttpRequest as that would be more efficient.
+     * Use cases are:
+     *  * Referer header: Stripped on MacOS and the specification says it
+     *    should be stripped
+     *
+     * INTERNAL USE ONLY!
+     */
+    Q_INVOKABLE void nativeAsyncRequest( int requestId, const QString& url,
+                                         const QVariantMap& headers,
+                                         const QVariantMap& options );
+
+    /**
+     * Lucene++ indices for JS resolvers
+     **/
+
+    Q_INVOKABLE bool hasFuzzyIndex();
+    Q_INVOKABLE void createFuzzyIndex( const QVariantList& list );
+    Q_INVOKABLE void addToFuzzyIndex( const QVariantList& list );
+    Q_INVOKABLE QVariantList searchFuzzyIndex( const QString& query );
+    Q_INVOKABLE QVariantList resolveFromFuzzyIndex( const QString& artist, const QString& album, const QString& tracks );
+    Q_INVOKABLE void deleteFuzzyIndex();
+
+    /**
+     * INTERNAL USE ONLY!
+     */
+    void customIODeviceFactory( const Tomahawk::result_ptr&, const QString& url,
+                                boost::function< void( const QString&, QSharedPointer< QIODevice >& ) > callback ); // async
 
 public slots:
     QByteArray readRaw( const QString& fileName );
     QString readBase64( const QString& fileName );
     QString readCompressed( const QString& fileName );
+    QString instanceUUID();
 
     QString compress( const QString& data );
     QVariantMap resolverData();
@@ -74,14 +133,27 @@ public slots:
 
     void reportCapabilities( const QVariant& capabilities );
 
+private slots:
+    void gotStreamUrl( IODeviceCallback callback, NetworkReply* reply );
+    void tracksAdded( const QList<Tomahawk::query_ptr>& tracks, const Tomahawk::ModelMode, const Tomahawk::collection_ptr& collection );
+    void pltemplateTracksLoadedForUrl( const QString& url, const Tomahawk::playlisttemplate_ptr& pltemplate );
+    void nativeAsyncRequestDone( int requestId, NetworkReply* reply );
+
 private:
     Tomahawk::query_ptr parseTrack( const QVariantMap& track );
-    void returnStreamUrl( const QString& streamUrl, boost::function< void( QSharedPointer< QIODevice >& ) > callback );
+    void returnStreamUrl( const QString& streamUrl, const QMap<QString, QString>& headers,
+                          boost::function< void( const QString&, QSharedPointer< QIODevice >& ) > callback );
 
-    QString m_scriptPath, m_urlCallback;
-    QHash< QString, boost::function< void( QSharedPointer< QIODevice >& ) > > m_streamCallbacks;
-    bool m_urlCallbackIsAsync;
+    bool indexDataFromVariant( const QVariantMap& map, struct Tomahawk::IndexData& indexData );
+    QVariantList searchInFuzzyIndex( const Tomahawk::query_ptr& query );
+
     QVariantMap m_resolverConfig;
     JSResolver* m_resolver;
+    QString m_scriptPath, m_urlCallback, m_urlTranslator;
+    QHash< QString, boost::function< void( const QString&, QSharedPointer< QIODevice >& ) > > m_streamCallbacks;
+    QHash< QString, boost::function< void( const QString& ) > > m_translatorCallbacks;
+    bool m_urlCallbackIsAsync;
+    QString m_pendingUrl;
+    Tomahawk::album_ptr m_pendingAlbum;
 };
 #endif // JSRESOLVERHELPER_H

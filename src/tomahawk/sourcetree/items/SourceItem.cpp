@@ -30,6 +30,7 @@
 #include "ViewManager.h"
 #include "Playlist.h"
 #include "GenericPageItems.h"
+#include "CollectionItem.h"
 #include "LovedTracksItem.h"
 #include "Source.h"
 #include "SourceList.h"
@@ -37,13 +38,13 @@
 #include "playlist/PlaylistView.h"
 #include "playlist/RecentlyAddedModel.h"
 #include "playlist/RecentlyPlayedModel.h"
-#include "playlist/PlaylistLargeItemDelegate.h"
 #include "sip/PeerInfo.h"
 #include "sip/SipPlugin.h"
 #include "widgets/HistoryWidget.h"
 #include "utils/ImageRegistry.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/Logger.h"
+#include "utils/DpiScaler.h"
 #include "TomahawkApp.h"
 
 /// SourceItem
@@ -51,7 +52,7 @@
 using namespace Tomahawk;
 
 SourceItem::SourceItem( SourcesModel* mdl, SourceTreeItem* parent, const Tomahawk::source_ptr& source )
-    : SourceTreeItem( mdl, parent, SourcesModel::Collection )
+    : SourceTreeItem( mdl, parent, SourcesModel::Source )
     , m_source( source )
     , m_playlists( 0 )
     , m_stations( 0 )
@@ -62,7 +63,6 @@ SourceItem::SourceItem( SourcesModel* mdl, SourceTreeItem* parent, const Tomahaw
     , m_coolPlaylistsPage( 0 )
     , m_latestAdditionsPage( 0 )
     , m_recentPlaysPage( 0 )
-    , m_whatsHotPage( 0 )
 {
     if ( !m_source )
         return;
@@ -85,7 +85,7 @@ SourceItem::SourceItem( SourcesModel* mdl, SourceTreeItem* parent, const Tomahaw
                                                  boost::bind( &SourceItem::latestAdditionsClicked, this ),
                                                  boost::bind( &SourceItem::getLatestAdditionsPage, this ) );
 
-    m_recentPlaysItem = new GenericPageItem( model(), this, tr( "Recently Played" ), ImageRegistry::instance()->icon( RESPATH "images/recently-played.svg" ),
+    m_recentPlaysItem = new GenericPageItem( model(), this, tr( "History" ), ImageRegistry::instance()->icon( RESPATH "images/recently-played.svg" ),
                                              boost::bind( &SourceItem::recentPlaysClicked, this ),
                                              boost::bind( &SourceItem::getRecentPlaysPage, this ) );
 
@@ -233,16 +233,13 @@ SourceItem::icon() const
 QPixmap
 SourceItem::pixmap( const QSize& size ) const
 {
-    if ( m_source.isNull() )
+    if ( !m_source )
     {
-       return TomahawkUtils::defaultPixmap( TomahawkUtils::SuperCollection, TomahawkUtils::Original, size );
+        return TomahawkUtils::defaultPixmap( TomahawkUtils::SuperCollection, TomahawkUtils::Original, size );
     }
     else
     {
-        if ( m_source->avatar().isNull() )
-            return TomahawkUtils::defaultPixmap( TomahawkUtils::DefaultSourceAvatar, TomahawkUtils::RoundedCorners );
-        else
-            return m_source->avatar( TomahawkUtils::RoundedCorners, size );
+        return m_source->avatar( TomahawkUtils::RoundedCorners, size, true );
     }
 }
 
@@ -322,7 +319,7 @@ SourceItem::onCollectionAdded( const collection_ptr& collection )
 void
 SourceItem::onCollectionRemoved( const collection_ptr& collection )
 {
-    GenericPageItem* item = m_collectionItems.value( collection );
+    SourceTreeItem* item = m_collectionItems.value( collection );
     int row = model()->indexFromItem( item ).row();
 
     beginRowsRemoved( row, row );
@@ -376,17 +373,24 @@ SourceItem::playlistsAddedInternal( SourceTreeItem* parent, const QList< dynplay
 void
 SourceItem::performAddCollectionItem( const collection_ptr& collection )
 {
-    GenericPageItem* item = new GenericPageItem( model(),
-                                                 this,
-                                                 collection->itemName(),
-                                                 collection->icon(),
-                                                 boost::bind( &SourceItem::collectionClicked, this, collection ),
-                                                 boost::bind( &SourceItem::getCollectionPage, this, collection ) );
-
+    SourceTreeItem* item;
     if ( collection->backendType() == Collection::DatabaseCollectionType )
-        item->setSortValue( -350 );
+    {
+        CollectionItem* i = new CollectionItem( model(), this, collection );
+        i->setSortValue( -350 );
+        item = i;
+    }
     else
-        item->setSortValue( -340 );
+    {
+        GenericPageItem* i = new GenericPageItem( model(),
+                                                     this,
+                                                     collection->itemName(),
+                                                     collection->icon(),
+                                                     boost::bind( &SourceItem::collectionClicked, this, collection ),
+                                                     boost::bind( &SourceItem::getCollectionPage, this, collection ) );
+        i->setSortValue( -340 );
+        item = i;
+    }
 
     m_collectionItems.insert( collection, item );
 }
@@ -397,6 +401,7 @@ void
 SourceItem::playlistDeletedInternal( SourceTreeItem* parent, const T& p )
 {
     Q_ASSERT( parent ); // How can we delete playlists if we have none?
+
     int curCount = parent->children().count();
     for( int i = 0; i < curCount; i++ )
     {
@@ -601,7 +606,9 @@ SourceItem::latestAdditionsClicked()
     if ( !m_latestAdditionsPage )
     {
         FlexibleView* pv = new FlexibleView( ViewManager::instance()->widget() );
-        pv->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::NewAdditions, TomahawkUtils::Original ) );
+        pv->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::NewAdditions,
+                                                     TomahawkUtils::Original,
+                                                     TomahawkUtils::DpiScaler::scaled( pv, 80, 80 ) ) );
 
         RecentlyAddedModel* raModel = new RecentlyAddedModel( pv );
         raModel->setTitle( tr( "Latest Additions" ) );
@@ -610,9 +617,6 @@ SourceItem::latestAdditionsClicked()
             raModel->setDescription( tr( "Latest additions to your collection" ) );
         else
             raModel->setDescription( tr( "Latest additions to %1's collection" ).arg( m_source->friendlyName() ) );
-
-        PlaylistLargeItemDelegate* del = new PlaylistLargeItemDelegate( PlaylistLargeItemDelegate::LatestAdditions, pv->trackView(), pv->trackView()->proxyModel() );
-        pv->trackView()->setPlaylistItemDelegate( del );
 
         pv->setPlayableModel( raModel );
         pv->trackView()->sortByColumn( PlayableModel::Age, Qt::DescendingOrder );

@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  *   along with Tomahawk. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Album.h"
+#include "Album_p.h"
 
 #include "database/Database.h"
 #include "database/DatabaseImpl.h"
@@ -45,12 +45,10 @@ static QReadWriteLock s_idMutex;
 
 Album::~Album()
 {
-    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Deleting album:" << m_name << m_artist->name();
-    m_ownRef.clear();
+    Q_D( Album );
+    d->ownRef.clear();
 
-#ifndef ENABLE_HEADLESS
-    delete m_cover;
-#endif
+    delete d->cover;
 }
 
 
@@ -124,56 +122,39 @@ Album::get( unsigned int id, const QString& name, const Tomahawk::artist_ptr& ar
 
 
 Album::Album( unsigned int id, const QString& name, const Tomahawk::artist_ptr& artist )
-    : QObject()
-    , m_waitingForId( false )
-    , m_id( id )
-    , m_name( name )
-    , m_artist( artist )
-    , m_coverLoaded( false )
-    , m_coverLoading( false )
-#ifndef ENABLE_HEADLESS
-    , m_cover( 0 )
-#endif
+    : d_ptr( new AlbumPrivate( this, id, name, artist ) )
 {
-    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Creating album:" << id << name << artist->name();
-    m_sortname = DatabaseImpl::sortname( name );
+    Q_D( Album );
+    d->sortname = DatabaseImpl::sortname( name );
 }
 
 
 Album::Album( const QString& name, const Tomahawk::artist_ptr& artist )
-    : QObject()
-    , m_waitingForId( true )
-    , m_id( 0 )
-    , m_name( name )
-    , m_artist( artist )
-    , m_coverLoaded( false )
-    , m_coverLoading( false )
-#ifndef ENABLE_HEADLESS
-    , m_cover( 0 )
-#endif
+    : d_ptr( new AlbumPrivate( this, name, artist ) )
 {
-    tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Creating album:" << name << artist->name();
-    m_sortname = DatabaseImpl::sortname( name );
+    Q_D( Album );
+    d->sortname = DatabaseImpl::sortname( name );
 }
 
 
 void
 Album::deleteLater()
 {
+    Q_D( Album );
     QMutexLocker lock( &s_nameCacheMutex );
 
-    const QString key = albumCacheKey( m_artist, m_name );
+    const QString key = albumCacheKey( d->artist, d->name );
     if ( s_albumsByName.contains( key ) )
     {
         s_albumsByName.remove( key );
     }
 
-    if ( m_id > 0 )
+    if ( d->id > 0 )
     {
         s_idMutex.lockForWrite();
-        if ( s_albumsById.contains( m_id ) )
+        if ( s_albumsById.contains( d->id ) )
         {
-            s_albumsById.remove( m_id );
+            s_albumsById.remove( d->id );
         }
         s_idMutex.unlock();
     }
@@ -192,43 +173,47 @@ Album::onTracksLoaded( Tomahawk::ModelMode mode, const Tomahawk::collection_ptr&
 artist_ptr
 Album::artist() const
 {
-    return m_artist;
+    Q_D( const Album );
+    return d->artist;
 }
 
 
 void
 Album::loadId( bool autoCreate )
 {
-    Q_ASSERT( m_waitingForId );
-    IdThreadWorker::getAlbumId( m_ownRef.toStrongRef(), autoCreate );
+    Q_D( Album );
+    Q_ASSERT( d->waitingForId );
+    IdThreadWorker::getAlbumId( d->ownRef.toStrongRef(), autoCreate );
 }
 
 
 void
 Album::setIdFuture( QFuture<unsigned int> future )
 {
-    m_idFuture = future;
+    Q_D( Album );
+    d->idFuture = future;
 }
 
 
 unsigned int
 Album::id() const
 {
+    Q_D( const Album );
     s_idMutex.lockForRead();
-    const bool waiting = m_waitingForId;
-    unsigned int finalId = m_id;
+    const bool waiting = d->waitingForId;
+    unsigned int finalId = d->id;
     s_idMutex.unlock();
 
     if ( waiting )
     {
-        finalId = m_idFuture.result();
+        finalId = d->idFuture.result();
 
         s_idMutex.lockForWrite();
-        m_id = finalId;
-        m_waitingForId = false;
+        d->id = finalId;
+        d->waitingForId = false;
 
-        if ( m_id > 0 )
-            s_albumsById.insert( m_id, m_ownRef.toStrongRef() );
+        if ( d->id > 0 )
+            s_albumsById.insert( d->id, d->ownRef.toStrongRef() );
 
         s_idMutex.unlock();
     }
@@ -237,24 +222,40 @@ Album::id() const
 }
 
 
-#ifndef ENABLE_HEADLESS
+QString
+Album::name() const
+{
+    Q_D( const Album );
+    return d->name;
+}
+
+
+QString
+Album::sortname() const
+{
+    Q_D( const Album );
+    return d->sortname;
+}
+
+
 QPixmap
 Album::cover( const QSize& size, bool forceLoad ) const
 {
-    if ( name().isEmpty() )
+    Q_D( const Album );
+    if ( d->name.isEmpty() )
     {
-        m_coverLoaded = true;
+        d->coverLoaded = true;
         return QPixmap();
     }
 
-    if ( !m_coverLoaded && !m_coverLoading )
+    if ( !d->coverLoaded && !d->coverLoading )
     {
         if ( !forceLoad )
             return QPixmap();
 
         Tomahawk::InfoSystem::InfoStringHash trackInfo;
-        trackInfo["artist"] = artist()->name();
-        trackInfo["album"] = name();
+        trackInfo["artist"] = d->artist->name();
+        trackInfo["album"] = d->name;
 
         Tomahawk::InfoSystem::InfoRequestData requestData;
         requestData.caller = infoid();
@@ -272,43 +273,50 @@ Album::cover( const QSize& size, bool forceLoad ) const
 
         Tomahawk::InfoSystem::InfoSystem::instance()->getInfo( requestData );
 
-        m_coverLoading = true;
+        d->coverLoading = true;
     }
 
-    if ( !m_cover && !m_coverBuffer.isEmpty() )
+    if ( !d->cover && !d->coverBuffer.isEmpty() )
     {
         QPixmap cover;
-        cover.loadFromData( m_coverBuffer );
-        m_coverBuffer.clear();
+        cover.loadFromData( d->coverBuffer );
+        d->coverBuffer.clear();
 
-        m_cover = new QPixmap( TomahawkUtils::squareCenterPixmap( cover ) );
+        d->cover = new QPixmap( TomahawkUtils::squareCenterPixmap( cover ) );
     }
 
-    if ( m_cover && !m_cover->isNull() && !size.isEmpty() )
+    if ( d->cover && !d->cover->isNull() && !size.isEmpty() )
     {
-        const QString cacheKey = infoid() + "_" + size.width();
+        const QString cacheKey = QString( "%1_%2_%3" ).arg( infoid() ).arg( size.width() ).arg( size.height() );
         QPixmap cover;
 
-        if ( !QPixmapCache::find( cacheKey, cover ) )
+        if ( !QPixmapCache::find( cacheKey, &cover ) )
         {
-            cover = m_cover->scaled( size, Qt::KeepAspectRatio, Qt::SmoothTransformation );
+            cover = d->cover->scaled( size, Qt::KeepAspectRatio, Qt::SmoothTransformation );
             QPixmapCache::insert( cacheKey, cover );
             return cover;
         }
         return cover;
     }
 
-    if ( m_cover )
-        return *m_cover;
+    if ( d->cover )
+        return *d->cover;
     else
         return QPixmap();
 }
-#endif
+
+bool
+Album::coverLoaded() const
+{
+    Q_D( const Album );
+    return d->coverLoaded;
+}
 
 
 void
 Album::infoSystemInfo( const Tomahawk::InfoSystem::InfoRequestData& requestData, const QVariant& output )
 {
+    Q_D( Album );
     if ( requestData.caller != infoid() ||
          requestData.type != Tomahawk::InfoSystem::InfoAlbumCoverArt )
     {
@@ -317,7 +325,7 @@ Album::infoSystemInfo( const Tomahawk::InfoSystem::InfoRequestData& requestData,
 
     if ( output.isNull() )
     {
-        m_coverLoaded = true;
+        d->coverLoaded = true;
     }
     else if ( output.isValid() )
     {
@@ -325,10 +333,10 @@ Album::infoSystemInfo( const Tomahawk::InfoSystem::InfoRequestData& requestData,
         const QByteArray ba = returnedData["imgbytes"].toByteArray();
         if ( ba.length() )
         {
-            m_coverBuffer = ba;
+            d->coverBuffer = ba;
         }
 
-        m_coverLoaded = true;
+        d->coverLoaded = true;
         emit coverChanged();
     }
 }
@@ -337,6 +345,7 @@ Album::infoSystemInfo( const Tomahawk::InfoSystem::InfoRequestData& requestData,
 void
 Album::infoSystemFinished( const QString& target )
 {
+    Q_D( Album );
     if ( target != infoid() )
         return;
 
@@ -346,7 +355,7 @@ Album::infoSystemFinished( const QString& target )
     disconnect( Tomahawk::InfoSystem::InfoSystem::instance(), SIGNAL( finished( QString ) ),
                 this, SLOT( infoSystemFinished( QString ) ) );
 
-    m_coverLoading = false;
+    d->coverLoading = false;
     emit updated();
 }
 
@@ -354,7 +363,8 @@ Album::infoSystemFinished( const QString& target )
 Tomahawk::playlistinterface_ptr
 Album::playlistInterface( ModelMode mode, const Tomahawk::collection_ptr& collection )
 {
-    playlistinterface_ptr pli = m_playlistInterface[ mode ][ collection ];
+    Q_D( Album );
+    playlistinterface_ptr pli = d->playlistInterface[ mode ][ collection ];
 
     if ( pli.isNull() )
     {
@@ -362,10 +372,26 @@ Album::playlistInterface( ModelMode mode, const Tomahawk::collection_ptr& collec
         connect( pli.data(), SIGNAL( tracksLoaded( Tomahawk::ModelMode, Tomahawk::collection_ptr ) ),
                                SLOT( onTracksLoaded( Tomahawk::ModelMode, Tomahawk::collection_ptr ) ) );
 
-        m_playlistInterface[ mode ][ collection ] = pli;
+        d->playlistInterface[ mode ][ collection ] = pli;
     }
 
     return pli;
+}
+
+
+QWeakPointer<Album>
+Album::weakRef()
+{
+    Q_D( Album );
+    return d->ownRef;
+}
+
+
+void
+Album::setWeakRef( QWeakPointer<Album> weakRef )
+{
+    Q_D( Album );
+    d->ownRef = weakRef;
 }
 
 
@@ -379,8 +405,9 @@ Album::tracks( ModelMode mode, const Tomahawk::collection_ptr& collection )
 QString
 Album::infoid() const
 {
-    if ( m_uuid.isEmpty() )
-        m_uuid = uuid();
+    Q_D( const Album );
+    if ( d->uuid.isEmpty() )
+        d->uuid = uuid();
 
-    return m_uuid;
+    return d->uuid;
 }

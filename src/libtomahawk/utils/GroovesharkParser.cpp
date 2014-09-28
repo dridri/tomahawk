@@ -29,8 +29,6 @@
 #include <QWebFrame>
 #include <QWebElement>
 
-#include <qjson/parser.h>
-
 #include "Query.h"
 #include "SourceList.h"
 #include "DropJob.h"
@@ -39,9 +37,11 @@
 #include "jobview/JobStatusView.h"
 #include "jobview/JobStatusModel.h"
 #include "jobview/ErrorStatusMessage.h"
+#include "utils/Json.h"
 #include "utils/NetworkReply.h"
 #include "utils/TomahawkUtils.h"
 #include "utils/Logger.h"
+#include "utils/NetworkAccessManager.h"
 
 using namespace Tomahawk;
 
@@ -133,13 +133,11 @@ GroovesharkParser::lookupGroovesharkPlaylist( const QString& linkRaw )
     QString hash = QCA::arrayToHex( resultArray.toByteArray() );
     QUrl url = QUrl( base_url + hash );
 
-    NetworkReply* reply = new NetworkReply( TomahawkUtils::nam()->post( QNetworkRequest( url ), data ) );
+    NetworkReply* reply = new NetworkReply( Tomahawk::Utils::nam()->post( QNetworkRequest( url ), data ) );
     connect( reply, SIGNAL( finished() ), SLOT( groovesharkLookupFinished() ) );
 
-#ifndef ENABLE_HEADLESS
     m_browseJob = new DropJobNotifier( pixmap(), "Grooveshark", type, reply );
     JobStatusView::instance()->model()->addJob( m_browseJob );
-#endif
 
     m_queries.insert( reply );
 }
@@ -150,13 +148,11 @@ GroovesharkParser::lookupGroovesharkTrack( const QString& track )
 {
     tLog() << "Parsing Grooveshark Track Page:" << track;
 
-    NetworkReply* reply = new NetworkReply( TomahawkUtils::nam()->get( QNetworkRequest( QUrl( track ) ) ) );
+    NetworkReply* reply = new NetworkReply( Tomahawk::Utils::nam()->get( QNetworkRequest( QUrl( track ) ) ) );
     connect( reply, SIGNAL( finished() ), SLOT( trackPageFetchFinished() ) );
 
-#ifndef ENABLE_HEADLESS
     m_browseJob = new DropJobNotifier( pixmap(), "Grooveshark", DropJob::Track, reply );
     JobStatusView::instance()->model()->addJob( m_browseJob );
-#endif
 
     m_queries << reply;
 }
@@ -205,13 +201,13 @@ GroovesharkParser::groovesharkLookupFinished()
 
     if ( r->reply()->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
         bool ok;
-        QVariantMap res = p.parse( r->reply(), &ok ).toMap();
+        QByteArray jsonData = r->reply()->readAll();
+        QVariantMap res = TomahawkUtils::parseJson( jsonData, &ok ).toMap();
 
         if ( !ok )
         {
-            tLog() << "Failed to parse json from Grooveshark browse item:" << p.errorString() << "On line" << p.errorLine();
+            tLog() << "Failed to parse json from Grooveshark browse item:" << jsonData;
             checkTrackFinished();
             return;
         }
@@ -239,9 +235,7 @@ GroovesharkParser::groovesharkLookupFinished()
     }
     else
     {
-#ifndef ENABLE_HEADLESS
         JobStatusView::instance()->model()->addJob( new ErrorStatusMessage( tr( "Error fetching Grooveshark information from the network!" ) ) );
-#endif
 
         tLog() << "Error in network request to grooveshark for track decoding:" << r->reply()->errorString();
     }

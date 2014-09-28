@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2011, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2011, Michael Zanetti <mzanetti@kde.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
@@ -26,9 +26,6 @@
 #include "items/SourceTreeItem.h"
 
 #include <QStyledItemDelegate>
-#include <QPropertyAnimation>
-
-class AnimationHelper;
 
 class SourceDelegate : public QStyledItemDelegate
 {
@@ -39,8 +36,6 @@ public:
 
     void hovered( const QModelIndex& index, const QMimeData* mimeData );
     void dragLeaveEvent();
-
-    SourceTreeItem::DropType hoveredDropType() const;
 
 signals:
     void clicked( const QModelIndex& idx );
@@ -57,32 +52,26 @@ protected:
     virtual bool editorEvent( QEvent* event, QAbstractItemModel* model, const QStyleOptionViewItem& option, const QModelIndex& index );
 
 private slots:
-    void animationFinished( const QModelIndex& );
 
 private:
-    void paintStandardItem( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const;
+    void paintStandardItem( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index, const QString& count = QString() ) const;
     void paintDecorations( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const;
-    void paintCollection( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const;
+    void paintSource( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const;
     void paintCategory( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const;
     void paintGroup( QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index ) const;
 
     QAbstractItemView* m_parent;
     mutable int m_iconHeight;
     QModelIndex m_dropHoverIndex;
-    QModelIndex m_newDropHoverIndex;
     QMimeData* m_dropMimeData;
-    mutable SourceTreeItem::DropType m_hoveredDropType; // Hack to keep easily track of the current highlighted DropType in paint()
-    QMap< QModelIndex, AnimationHelper* > m_expandedMap;
     qint64 m_lastClicked;
-    QMap< int, SourceTreeItem::DropType > m_dropTypeMap;
-    QMap< int, QString > m_dropTypeTextMap;
 
     mutable QPersistentModelIndex m_trackHovered;
     mutable QHash< QPersistentModelIndex, QRect > m_trackRects;
     mutable QHash< QPersistentModelIndex, QRect > m_headphoneRects;
     mutable QHash< QPersistentModelIndex, QRect > m_lockRects;
 
-    mutable QLinearGradient m_gradient;
+    const int m_margin;
 };
 
 #endif // SOURCEDELEGATE_H

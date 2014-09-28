@@ -30,30 +30,25 @@
 #include "DllMacro.h"
 #include "Typedefs.h"
 
-#include <QObject>
-#include <QMap>
-#include <QNetworkReply>
-#include <QSharedPointer>
+#include <QHostAddress>
 #include <QTcpServer>
 
 class Connection;
 class Connector;
 class ControlConnection;
-class StreamConnection;
+class NetworkReply;
+class PeerInfo;
+class PortFwdThread;
 class ProxyConnection;
 class QTcpSocketExtra;
 class RemoteCollectionConnection;
-class PortFwdThread;
-class PeerInfo;
 class SipInfo;
+class StreamConnection;
 
 namespace boost
 {
     template <class T> class function;
 } // boost
-
-typedef boost::function< void( const Tomahawk::result_ptr&,
-                               boost::function< void( QSharedPointer< QIODevice >& ) > )> IODeviceFactoryFunc;
 
 class ServentPrivate;
 
@@ -69,7 +64,24 @@ public:
     explicit Servent( QObject* parent = 0 );
     virtual ~Servent();
 
-    bool startListening( QHostAddress ha, bool upnp, int port, Tomahawk::Network::ExternalAddress::Mode mode, int defaultPort, bool autoDetectExternalIp = false, const QString& externalHost = "", int externalPort = -1 );
+    /**
+     * Start listening for connections.
+     *
+     * @param ha The address to listen on, pass QHostAddress::Any or QHostAddress::AnyIPv6 depending on your Qt version to listen on all interfaces.
+     * @param upnp If true, try to create a port forward on the next router through UPnP.
+     * @param port The port we should listen on, if not possible fallback to defaultPort.
+     * @param mode How the external IP address should be determined.
+     * @param defaultPort If we cannot listen on the port the user configured try this port as fallback.
+     * @param autoDetectExternalIp If true, try to automatically detect the external port by querying a remote server.
+     * @param externalHost manually supplied external hostname (only with mode == Tomahawk::Network::ExternalAddress::Static)
+     * @param externalPort manually supplied external port (only with mode == Tomahawk::Network::ExternalAddress::Static)
+     * @return True if we could listen on any of the supplied ports.
+     */
+    bool startListening( QHostAddress ha, bool upnp, int port,
+                         Tomahawk::Network::ExternalAddress::Mode mode,
+                         int defaultPort, bool autoDetectExternalIp = false,
+                         const QString& externalHost = QString(),
+                         int externalPort = -1 );
 
     // creates new token that allows a controlconnection to be set up
     QString createConnectionKey( const QString& name = "", const QString &nodeid = "", const QString &key = "", bool onceOnly = true );
@@ -81,6 +93,9 @@ public:
     void unregisterControlConnection( ControlConnection* conn );
     ControlConnection* lookupControlConnection( const SipInfo& sipInfo );
     ControlConnection* lookupControlConnection( const QString& nodeid );
+
+    void remoteIODeviceFactory( const Tomahawk::result_ptr& result, const QString& url,
+                                    boost::function< void ( const QString&, QSharedPointer< QIODevice >& ) > callback );
 
     // you may call this method as often as you like for the same peerInfo, dupe checking is done inside
     void registerPeer( const Tomahawk::peerinfo_ptr& peerInfo );
@@ -125,12 +140,6 @@ public:
 
     QList< StreamConnection* > streams() const;
 
-    void getIODeviceForUrl( const Tomahawk::result_ptr& result, boost::function< void ( QSharedPointer< QIODevice >& ) > callback );
-    void registerIODeviceFactory( const QString &proto, IODeviceFactoryFunc fac );
-    void remoteIODeviceFactory( const Tomahawk::result_ptr& result, boost::function< void ( QSharedPointer< QIODevice >& ) > callback );
-    void localFileIODeviceFactory( const Tomahawk::result_ptr& result, boost::function< void ( QSharedPointer< QIODevice >& ) > callback );
-    void httpIODeviceFactory( const Tomahawk::result_ptr& result, boost::function< void ( QSharedPointer< QIODevice >& ) > callback );
-
     bool isReady() const;
 
     QList<SipInfo> getLocalSipInfos(const QString& nodeid, const QString &key);
@@ -151,7 +160,11 @@ signals:
     void ready();
 
 protected:
-    void incomingConnection( int sd );
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
+    void incomingConnection( qintptr sd ) Q_DECL_OVERRIDE;
+#else
+    void incomingConnection( int sd ) Q_DECL_OVERRIDE;
+#endif
 
 public slots:
     void setExternalAddress( QHostAddress ha, unsigned int port );
@@ -182,6 +195,14 @@ private:
     void handoverSocket( Connection* conn, QTcpSocketExtra* sock );
     void cleanupSocket( QTcpSocketExtra* sock );
     void printCurrentTransfers();
+
+    /**
+     * Remove addresses from the list that we shall not use in Tomahawk (e.g.
+     * for sending to other peers).
+     *
+     * @param addresses The list that shall be cleanded.
+     */
+    void cleanAddresses( QList<QHostAddress>& addresses ) const;
 
     static Servent* s_instance;
 };

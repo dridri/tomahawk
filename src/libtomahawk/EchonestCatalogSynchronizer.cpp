@@ -18,21 +18,20 @@
 
 #include "EchonestCatalogSynchronizer.h"
 
-#include <echonest/CatalogUpdateEntry.h>
-#include <echonest/Config.h>
-
 #include "collection/Collection.h"
 #include "database/Database.h"
 #include "database/DatabaseImpl.h"
 #include "database/DatabaseCommand_GenericSelect.h"
 #include "database/DatabaseCommand_SetCollectionAttributes.h"
 #include "database/DatabaseCommand_LoadFiles.h"
+#include "database/DatabaseCommand_SetTrackAttributes.h"
 #include "utils/Logger.h"
 
 #include "PlaylistEntry.h"
 #include "Query.h"
 #include "SourceList.h"
 #include "TomahawkSettings.h"
+#include "Track.h"
 
 #include <echonest/CatalogUpdateEntry.h>
 #include <echonest/Config.h>

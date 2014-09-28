@@ -17,6 +17,7 @@
  *   along with Tomahawk. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
 #ifndef TYPEDEFS_H
 #define TYPEDEFS_H
 
@@ -245,6 +246,16 @@ namespace Tomahawk
         typedef QPair< QVariantMap, QVariant > PushInfoPair;
 
         typedef QPointer< InfoPlugin > InfoPluginPtr;
+    }
+
+    namespace Network
+    {
+        namespace ACL
+        {
+            class AclRequest;
+            typedef QSharedPointer<AclRequest> aclrequest_ptr;
+            typedef QWeakPointer<AclRequest> aclrequest_wptr;
+        }
     }
 } // ns
 

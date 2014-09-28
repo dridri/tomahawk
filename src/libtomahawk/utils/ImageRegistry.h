@@ -31,10 +31,11 @@ public:
     explicit ImageRegistry();
 
     QIcon icon( const QString& image, TomahawkUtils::ImageMode mode = TomahawkUtils::Original );
-    QPixmap pixmap( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode = TomahawkUtils::Original );
+    QPixmap pixmap( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode = TomahawkUtils::Original, float opacity = 1.0, QColor tint = QColor( 0, 0, 0, 0 ) );
 
 private:
-    void putInCache( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode, const QPixmap& pixmap );
+    qint64 cacheKey( const QSize& size, float opacity, QColor tint );
+    void putInCache( const QString& image, const QSize& size, TomahawkUtils::ImageMode mode, float opacity, const QPixmap& pixmap, QColor tint );
 
     static ImageRegistry* s_instance;
 };

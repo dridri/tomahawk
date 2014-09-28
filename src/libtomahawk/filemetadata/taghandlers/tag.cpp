@@ -28,6 +28,11 @@
 #include <taglib/xiphcomment.h>
 #include <taglib/vorbisfile.h>
 #include <taglib/oggflacfile.h>
+#if defined(TAGLIB_MAJOR_VERSION) && defined(TAGLIB_MINOR_VERSION)
+    #if TAGLIB_MAJOR_VERSION >= 1 && TAGLIB_MINOR_VERSION >= 9
+        #include <taglib/opusfile.h>
+    #endif
+#endif
 #include <taglib/flacfile.h>
 #include <taglib/speexfile.h>
 #include <taglib/mpegfile.h>
@@ -42,84 +47,94 @@
 namespace Tomahawk
 {
 
-/*static*/ Tag* Tag::fromFile( const TagLib::FileRef &f )
-{
-    Tag *t = 0;
 
+QSharedPointer<Tag>
+Tag::fromFile( const TagLib::FileRef &f )
+{
     if( TagLib::Ogg::Vorbis::File *file =
             dynamic_cast< TagLib::Ogg::Vorbis::File * >( f.file() ) )
     {
         if( file->tag() )
-            t = new OggTag( f.tag(), file->tag() );
+            return QSharedPointer<Tag>( new OggTag( f.tag(), file->tag() ) );
     }
     else if( TagLib::Ogg::FLAC::File *file =
              dynamic_cast< TagLib::Ogg::FLAC::File * >( f.file() ) )
     {
         if( file->tag() )
-            t = new OggTag( f.tag(), file->tag() );
+            return QSharedPointer<Tag>( new OggTag( f.tag(), file->tag() ) );
     }
+#if TAGLIB_MAJOR_VERSION >= 1 && TAGLIB_MINOR_VERSION >= 9
+    else if ( TagLib::Ogg::Opus::File *file =
+              dynamic_cast< TagLib::Ogg::Opus::File * >( f.file() ) )
+    {
+        if ( file->tag() )
+        {
+            return QSharedPointer<Tag>( new OggTag( f.tag(), file->tag() ) );
+        }
+    }
+#endif
     else if( TagLib::RIFF::AIFF::File *file =
              dynamic_cast< TagLib::RIFF::AIFF::File * >( f.file() ) )
     {
         if( file->tag() )
-            t = new ID3v2Tag( f.tag(), file->tag() );
+            return QSharedPointer<Tag>( new ID3v2Tag( f.tag(), file->tag() ) );
     }
     else if( TagLib::Ogg::Speex::File *file =
              dynamic_cast< TagLib::Ogg::Speex::File * >( f.file() ) )
     {
         if( file->tag() )
-            t = new OggTag( f.tag(), file->tag() );
+            return QSharedPointer<Tag>( new OggTag( f.tag(), file->tag() ) );
     }
     else if( TagLib::FLAC::File *file =
              dynamic_cast< TagLib::FLAC::File * >( f.file() ) )
     {
         if( file->xiphComment() )
-            t = new OggTag( f.tag(), file->xiphComment() );
+            return QSharedPointer<Tag>( new OggTag( f.tag(), file->xiphComment() ) );
         else if( file->ID3v2Tag() )
-            t = new ID3v2Tag( f.tag(), file->ID3v2Tag() );
+            return QSharedPointer<Tag>( new ID3v2Tag( f.tag(), file->ID3v2Tag() ) );
         else if( file->ID3v1Tag() )
-            t = new ID3v1Tag( f.tag() );
+            return QSharedPointer<Tag>( new ID3v1Tag( f.tag() ) );
     }
     else if( TagLib::MPEG::File *file =
              dynamic_cast< TagLib::MPEG::File * >( f.file() ) )
     {
         if( file->ID3v2Tag() )
-            t = new ID3v2Tag( f.tag(), file->ID3v2Tag() );
+            return QSharedPointer<Tag>( new ID3v2Tag( f.tag(), file->ID3v2Tag() ) );
         else if( file->APETag() )
-            t = new APETag( f.tag(), file->APETag() );
+            return QSharedPointer<Tag>( new APETag( f.tag(), file->APETag() ) );
         else if( file->ID3v1Tag() )
-            t = new ID3v1Tag( f.tag() );
+            return QSharedPointer<Tag>( new ID3v1Tag( f.tag() ) );
     }
     else if( TagLib::MP4::File *file =
              dynamic_cast< TagLib::MP4::File * >( f.file() ) )
     {
         if( file->tag() )
-            t = new MP4Tag( f.tag(), file->tag() );
+            return QSharedPointer<Tag>( new MP4Tag( f.tag(), file->tag() ) );
     }
     else if( TagLib::MPC::File *file =
              dynamic_cast< TagLib::MPC::File * >( f.file() ) )
     {
         if( file->APETag() )
-            t = new APETag( f.tag(), file->APETag() );
+            return QSharedPointer<Tag>( new APETag( f.tag(), file->APETag() ) );
         else if( file->ID3v1Tag() )
-            t = new ID3v1Tag( f.tag() );
+            return QSharedPointer<Tag>( new ID3v1Tag( f.tag() ) );
     }
     else if( TagLib::ASF::File *file =
              dynamic_cast< TagLib::ASF::File * >( f.file() ) )
     {
         if( file->tag() )
-            t = new ASFTag( f.tag(), file->tag() );
+            return QSharedPointer<Tag>( new ASFTag( f.tag(), file->tag() ) );
     }
     else if( TagLib::WavPack::File *file =
         dynamic_cast< TagLib::WavPack::File * >( f.file() ) )
     {
         if( file->APETag() )
-            t = new APETag( f.tag(), file->APETag() );
+            return QSharedPointer<Tag>( new APETag( f.tag(), file->APETag() ) );
         else if( file->ID3v1Tag() )
-            t = new ID3v1Tag( f.tag() );
+            return QSharedPointer<Tag>( new ID3v1Tag( f.tag() ) );
     }
 
-    return t;
+    return QSharedPointer<Tag>();
 }
 
 unsigned int Tag::processDiscNumber( const QString &s ) const

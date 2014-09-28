@@ -20,9 +20,9 @@
 
 #include "SpotifyAccount.h"
 #include "utils/Closure.h"
+#include "utils/Json.h"
 #include "utils/Logger.h"
-
-#include <qjson/parser.h>
+#include "utils/NetworkAccessManager.h"
 
 using namespace Tomahawk;
 using namespace Tomahawk::InfoSystem;
@@ -32,9 +32,9 @@ SpotifyInfoPlugin::SpotifyInfoPlugin( Accounts::SpotifyAccount* account )
     : InfoPlugin()
     , m_account( QPointer< Accounts::SpotifyAccount >( account ) )
 {
+    m_supportedGetTypes << InfoAlbumSongs;
     if ( !m_account.isNull() )
     {
-        m_supportedGetTypes << InfoAlbumSongs;
         m_supportedPushTypes << InfoLove << InfoUnLove;
     }
 }
@@ -138,29 +138,12 @@ SpotifyInfoPlugin::notInCacheSlot( InfoStringHash criteria, InfoRequestData requ
         const QString album = criteria[ "album" ];
         const QString artist = criteria[ "artist" ];
 
-        if ( m_account.isNull() || !m_account.data()->loggedIn() )
-        {
-            // No running spotify account, use our webservice
-            QUrl lookupUrl( "http://ws.spotify.com/search/1/album.json" );
-            TomahawkUtils::urlAddQueryItem( lookupUrl, "q", QString( "%1 %2" ).arg( artist ).arg( album ) );
+        // Use always Spotify webservice, faster and more stable
+        QUrl lookupUrl( "http://ws.spotify.com/search/1/album.json" );
+        TomahawkUtils::urlAddQueryItem( lookupUrl, "q", QString( "%1 %2" ).arg( artist ).arg( album ) );
 
-            QNetworkReply * reply = TomahawkUtils::nam()->get( QNetworkRequest( lookupUrl ) );
-            NewClosure( reply, SIGNAL( finished() ), this, SLOT( albumIdLookupFinished( QNetworkReply*, Tomahawk::InfoSystem::InfoRequestData ) ), reply, requestData );
-        }
-        else
-        {
-            // Running resolver, so do the lookup through that
-            tLog( LOGVERBOSE ) << Q_FUNC_INFO << "Doing album lookup through spotify:" << album << artist;
-            QVariantMap message;
-            message[ "_msgtype" ] = "albumListing";
-            message[ "artist" ] = artist;
-            message[ "album" ] = album;
-
-            QMetaObject::invokeMethod( m_account.data(), "sendMessage", Qt::QueuedConnection, Q_ARG( QVariantMap, message ),
-                                                                                              Q_ARG( QObject*, this ),
-                                                                                              Q_ARG( QString, "albumListingResult" ),
-                                                                                              Q_ARG( QVariant, QVariant::fromValue< InfoRequestData >( requestData ) ) );
-        }
+        QNetworkReply * reply = Tomahawk::Utils::nam()->get( QNetworkRequest( lookupUrl ) );
+        NewClosure( reply, SIGNAL( finished() ), this, SLOT( albumIdLookupFinished( QNetworkReply*, Tomahawk::InfoSystem::InfoRequestData ) ), reply, requestData );
         break;
     }
     default:
@@ -205,8 +188,7 @@ SpotifyInfoPlugin::albumIdLookupFinished( QNetworkReply* reply, const InfoReques
 
     if ( reply->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
-        const QVariantMap response = p.parse( reply ).toMap();
+        const QVariantMap response = TomahawkUtils::parseJson( reply->readAll() ).toMap();
         if ( !response.contains( "albums" ) )
         {
             dataError( requestData );
@@ -234,7 +216,7 @@ SpotifyInfoPlugin::albumIdLookupFinished( QNetworkReply* reply, const InfoReques
         QUrl lookupUrl( QString( "http://spotikea.tomahawk-player.org/browse/%1" ).arg( id ) );
 
 
-        QNetworkReply * reply = TomahawkUtils::nam()->get( QNetworkRequest( lookupUrl ) );
+        QNetworkReply * reply = Tomahawk::Utils::nam()->get( QNetworkRequest( lookupUrl ) );
         NewClosure( reply, SIGNAL( finished() ), this, SLOT( albumContentsLookupFinished( QNetworkReply*, Tomahawk::InfoSystem::InfoRequestData ) ), reply, requestData );
     }
     else
@@ -253,8 +235,7 @@ SpotifyInfoPlugin::albumContentsLookupFinished( QNetworkReply* reply, const Info
 
     if ( reply->error() == QNetworkReply::NoError )
     {
-        QJson::Parser p;
-        const QVariantMap response = p.parse( reply ).toMap();
+        const QVariantMap response = TomahawkUtils::parseJson( reply->readAll() ).toMap();
 
         if ( !response.contains( "album" ) )
         {

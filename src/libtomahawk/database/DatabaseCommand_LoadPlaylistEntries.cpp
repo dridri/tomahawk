@@ -18,14 +18,13 @@
 
 #include "DatabaseCommand_LoadPlaylistEntries.h"
 
+#include "utils/Json.h"
 #include "utils/Logger.h"
 
 #include "DatabaseImpl.h"
 #include "PlaylistEntry.h"
 #include "Query.h"
 #include "Source.h"
-
-#include "qjson/parser.h"
 
 #include <QSqlQuery>
 
@@ -53,14 +52,14 @@ DatabaseCommand_LoadPlaylistEntries::generateEntries( DatabaseImpl* dbi )
 
     tLog( LOGVERBOSE ) << "trying to load playlist entries for guid:" << m_revguid;
     QString prevrev;
-    QJson::Parser parser; bool ok;
+    bool ok;
 
     if ( query_entries.next() )
     {
         if ( !query_entries.value( 0 ).isNull() )
         {
             // entries should be a list of strings:
-            QVariant v = parser.parse( query_entries.value( 0 ).toByteArray(), &ok );
+            QVariant v = TomahawkUtils::parseJson( query_entries.value( 0 ).toByteArray(), &ok );
             Q_ASSERT( ok && v.type() == QVariant::List ); //TODO
 
             m_guids = v.toStringList();
@@ -125,7 +124,7 @@ DatabaseCommand_LoadPlaylistEntries::generateEntries( DatabaseImpl* dbi )
 
         if ( !query_entries_old.value( 0 ).isNull() )
         {
-            QVariant v = parser.parse( query_entries_old.value( 0 ).toByteArray(), &ok );
+            QVariant v = TomahawkUtils::parseJson( query_entries_old.value( 0 ).toByteArray(), &ok );
             Q_ASSERT( ok && v.type() == QVariant::List ); //TODO
             m_oldentries = v.toStringList();
         }
