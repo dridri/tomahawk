@@ -30,6 +30,8 @@
 #include "SourceList.h"
 #include "Track.h"
 
+#include <unordered_map>
+
 namespace Tomahawk
 {
 
@@ -100,7 +102,7 @@ DatabaseCommand_AllTracks::exec( DatabaseImpl* dbi )
 
     // Small cache to keep already created source objects.
     // This saves some mutex locking.
-    std::map<uint, Tomahawk::source_ptr> sourceCache;
+    std::unordered_map<uint, Tomahawk::source_ptr> sourceCache;
 
     while( query.next() )
     {
@@ -119,7 +121,7 @@ DatabaseCommand_AllTracks::exec( DatabaseImpl* dbi )
         uint albumpos = query.value( 13 ).toUInt();
         uint trackId = query.value( 14 ).toUInt();
 
-        std::map<uint, Tomahawk::source_ptr>::const_iterator _s = sourceCache.find( sourceId );
+        std::unordered_map<uint, Tomahawk::source_ptr>::const_iterator _s = sourceCache.find( sourceId );
         Tomahawk::source_ptr s;
         if ( _s == sourceCache.end() )
         {
@@ -138,16 +140,16 @@ DatabaseCommand_AllTracks::exec( DatabaseImpl* dbi )
         if ( !s->isLocal() )
             url = QString( "servent://%1\t%2" ).arg( s->nodeId() ).arg( url );
 
-        Tomahawk::result_ptr result = Tomahawk::Result::get( url );
         Tomahawk::track_ptr t = Tomahawk::Track::get( trackId,
                                                       artist, track, album,
                                                       duration, composer,
                                                       albumpos, discnumber );
+
         if ( m_album || m_artist ) {
             t->loadAttributes();
         }
-        result->setTrack( t );
 
+        Tomahawk::result_ptr result = Tomahawk::Result::get( url, t );
         result->setSize( size );
         result->setBitrate( bitrate );
         result->setModificationTime( modificationTime );

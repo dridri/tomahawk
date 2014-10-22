@@ -35,22 +35,15 @@ set( libGuiSources
     jobview/IndexingJobItem.cpp
     jobview/InboxJobItem.cpp
 
-    infobar/InfoBar.cpp
-
     playlist/InboxModel.cpp
     playlist/InboxView.cpp
-    playlist/FlexibleHeader.cpp
     playlist/ContextView.cpp
-    playlist/FlexibleView.cpp
-    playlist/FlexibleTreeView.cpp
     playlist/TreeModel.cpp
     playlist/TreeProxyModel.cpp
     playlist/TreeProxyModelPlaylistInterface.cpp
-    playlist/TreeItemDelegate.cpp
     playlist/ColumnItemDelegate.cpp
     playlist/ColumnViewPreviewWidget.cpp
     playlist/PlaylistModel.cpp
-    playlist/PlaylistView.cpp
     playlist/PlaylistItemDelegate.cpp
     playlist/QueueProxyModel.cpp
     playlist/QueueView.cpp
@@ -61,16 +54,13 @@ set( libGuiSources
     playlist/AlbumModel.cpp
     playlist/GridItemDelegate.cpp
     playlist/GridView.cpp
-    playlist/TreeView.cpp
     playlist/ColumnView.cpp
-    playlist/TreeWidget.cpp
     playlist/ViewHeader.cpp
     playlist/LovedTracksModel.cpp
     playlist/RecentlyLovedTracksModel.cpp
     playlist/TopLovedTracksModel.cpp
     playlist/RecentlyAddedModel.cpp
     playlist/RecentlyPlayedModel.cpp
-    playlist/AlbumItemDelegate.cpp
     playlist/TrackItemDelegate.cpp
     playlist/PlayableItem.cpp
     playlist/SingleTrackPlaylistInterface.cpp
@@ -124,7 +114,14 @@ set( libGuiSources
     utils/NetworkAccessManager.cpp
     utils/ShortLinkHelper.cpp
 
-    widgets/AnimatedCounterLabel.cpp
+    viewpages/SearchViewPage.cpp
+    viewpages/SourceViewPage.cpp
+    viewpages/ArtistViewPage.cpp
+    viewpages/AlbumViewPage.cpp
+    viewpages/TrackViewPage.cpp
+    viewpages/PlaylistViewPage.cpp
+    viewpages/CollectionViewPage.cpp
+
     widgets/AnimatedSplitter.cpp
     widgets/BasicHeader.cpp
     widgets/HoverControls.cpp
@@ -132,37 +129,27 @@ set( libGuiSources
     widgets/Breadcrumb.cpp
     widgets/BreadcrumbButton.cpp
     widgets/ChartDataLoader.cpp
-    widgets/CheckDirTree.cpp
     widgets/ClickableLabel.cpp
     widgets/ComboBox.cpp
     widgets/ElidedLabel.cpp
-    widgets/FadingPixmap.cpp
     widgets/FilterHeader.cpp
     widgets/CaptionLabel.cpp
     widgets/HeaderLabel.cpp
     widgets/HistoryWidget.cpp
     widgets/ImageButton.cpp
-    widgets/NewPlaylistWidget.cpp
-    widgets/NewReleasesWidget.cpp
     widgets/OverlayButton.cpp
     widgets/OverlayWidget.cpp
     widgets/PlayableCover.cpp
     widgets/PlaylistsModel.cpp
-    widgets/PlaylistTypeSelectorDialog.cpp
     widgets/QueryLabel.cpp
     widgets/RecentPlaylistsModel.cpp
     widgets/RecentlyPlayedPlaylistsModel.cpp
     widgets/ScriptCollectionHeader.cpp
     widgets/ScrollingLabel.cpp
-    widgets/SearchWidget.cpp
     widgets/SeekSlider.cpp
     widgets/SourceTreePopupDialog.cpp
-    widgets/StatsGauge.cpp
     widgets/ToggleButton.cpp
-    widgets/infowidgets/SourceInfoWidget.cpp
-    widgets/infowidgets/ArtistInfoWidget.cpp
-    widgets/infowidgets/AlbumInfoWidget.cpp
-    widgets/infowidgets/TrackInfoWidget.cpp
+
     widgets/searchlineedit/ClearButton.cpp
     widgets/searchlineedit/LineEdit.cpp
     widgets/searchlineedit/SearchButton.cpp
@@ -223,7 +210,7 @@ list(APPEND libSources
 
     accounts/spotify/SpotifyAccount.cpp
     accounts/spotify/SpotifyAccountConfig.cpp
-    accounts/spotify/SpotifyPlaylistUpdater.cpp
+#    accounts/spotify/SpotifyPlaylistUpdater.cpp
     accounts/spotify/SpotifyInfoPlugin.cpp
 
     audio/AudioEngine.cpp
@@ -383,18 +370,14 @@ IF(LIBLASTFM_FOUND)
 ENDIF(LIBLASTFM_FOUND)
 
 set( libUI ${libUI}
-    widgets/PlaylistTypeSelectorDialog.ui
-    widgets/NewPlaylistWidget.ui
-    widgets/SearchWidget.ui
     widgets/HeaderWidget.ui
-    widgets/NewReleasesWidget.ui
-    widgets/infowidgets/SourceInfoWidget.ui
-    widgets/infowidgets/ArtistInfoWidget.ui
-    widgets/infowidgets/AlbumInfoWidget.ui
-    widgets/infowidgets/TrackInfoWidget.ui
+    viewpages/SearchViewPage.ui
+    viewpages/SourceViewPage.ui
+    viewpages/ArtistViewPage.ui
+    viewpages/AlbumViewPage.ui
+    viewpages/TrackViewPage.ui
     playlist/QueueView.ui
     filemetadata/MetadataEditor.ui
-    infobar/InfoBar.ui
     accounts/AccountFactoryWrapper.ui
     accounts/spotify/SpotifyAccountConfig.ui
     accounts/lastfm/LastFmConfig.ui
@@ -408,8 +391,12 @@ include_directories(
     ${QJSON_INCLUDE_DIR}
     ${ECHONEST_INCLUDE_DIR}
     ${LUCENEPP_INCLUDE_DIRS}
+<<<<<<< HEAD
     ${PHONON_INCLUDES}
     ${LIBVLC_INCLUDES}
+=======
+    ${LIBVLC_INCLUDE_DIR}
+>>>>>>> upstream/libvlc
     ${Boost_INCLUDE_DIR}
 
     ${LIBPORTFWD_INCLUDE_DIR}
@@ -521,8 +508,13 @@ ENDIF( UNIX AND NOT APPLE )
 
 TARGET_LINK_LIBRARIES( tomahawklib
     LINK_PRIVATE
+<<<<<<< HEAD
     ${PHONON_LIBRARY}
     ${LIBVLC_LIBRARY}
+=======
+    ${LIBVLC_LIBRARY}
+    ${LIBVLCCORE_LIBRARY}
+>>>>>>> upstream/libvlc
 
     # Thirdparty shipped with tomahawk
     ${LIBPORTFWD_LIBRARIES}
@@ -567,7 +559,6 @@ file( GLOB contextPagesHeaders "context/pages/*.h" )
 file( GLOB databaseHeaders "database/*.h" )
 file( GLOB filemetadataHeaders "filemetadata/*.h" )
 file( GLOB filemetadataTaghandlersHeaders "filemetadata/taghandlers/*.h" )
-file( GLOB infobarHeaders "infobar/*.h" )
 file( GLOB infosystemHeaders "infosystem/*.h" )
 file( GLOB jobviewHeaders "jobview/*.h" )
 file( GLOB networkHeaders "network/*.h" )
@@ -582,7 +573,7 @@ file( GLOB thirdpartyKdsingleapplicationguardHeaders "thirdparty/kdsingleapplica
 file( GLOB thirdpartyQocoaHeaders "thirdparty/Qocoa/*.h" )
 file( GLOB utilsHeaders "utils/*.h" )
 file( GLOB widgetsHeaders "widgets/*.h" )
-file( GLOB widgetsInfowidgetsHeaders "widgets/infowidgets/*.h" )
+file( GLOB viewpagesHeaders "viewpages/*.h" )
 file( GLOB widgetsSearchlineeditHeaders "widgets/searchlineedit/*.h" )
 
 install( FILES ${CMAKE_CURRENT_BINARY_DIR}/config.h DESTINATION include/libtomahawk )
@@ -597,7 +588,6 @@ install( FILES ${contextPagesHeaders} DESTINATION include/libtomahawk/context/pa
 install( FILES ${databaseHeaders} DESTINATION include/libtomahawk/database )
 install( FILES ${filemetadataHeaders} DESTINATION include/libtomahawk/filemetadata )
 install( FILES ${filemetadataTaghandlersHeaders} DESTINATION include/libtomahawk/filemetadata/taghandlers )
-install( FILES ${infobarHeaders} DESTINATION include/libtomahawk/infobar )
 install( FILES ${infosystemHeaders} DESTINATION include/libtomahawk/infosystem )
 install( FILES ${jobviewHeaders} DESTINATION include/libtomahawk/jobview )
 install( FILES ${networkHeaders} DESTINATION include/libtomahawk/network )
@@ -612,5 +602,5 @@ install( FILES ${thirdpartyKdsingleapplicationguardHeaders} DESTINATION include/
 install( FILES ${thirdpartyQocoaHeaders} DESTINATION include/libtomahawk/thirdparty/Qocoa )
 install( FILES ${utilsHeaders} DESTINATION include/libtomahawk/utils )
 install( FILES ${widgetsHeaders} DESTINATION include/libtomahawk/widgets )
-install( FILES ${widgetsInfowidgetsHeaders} DESTINATION include/libtomahawk/widgets/infowidgets )
+install( FILES ${viewpagesHeaders} DESTINATION include/libtomahawk/viewpages )
 install( FILES ${widgetsSearchlineeditHeaders} DESTINATION include/libtomahawk/widgets/searchlineedit )

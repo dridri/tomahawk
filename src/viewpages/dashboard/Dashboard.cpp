@@ -74,7 +74,7 @@ DashboardWidget::DashboardWidget( QWidget* parent )
 
     {
         m_tracksModel = new RecentlyPlayedModel( ui->trackView->trackView(), HISTORY_TRACK_ITEMS );
-        ui->trackView->setPlayableModel( m_tracksModel );
+        ui->trackView->trackView()->setPlayableModel( m_tracksModel );
         ui->trackView->setCaption( tr( "Recently Played Tracks" ) );
         ui->trackView->trackView()->setUniformRowHeights( false );
         ui->trackView->trackView()->setIndentation( 0 );
@@ -84,7 +84,7 @@ DashboardWidget::DashboardWidget( QWidget* parent )
     }
 
     {
-        QScrollArea* area = new QScrollArea();
+/*        QScrollArea* area = new QScrollArea();
         area->setWidgetResizable( true );
         area->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
         area->setWidget( widget );
@@ -94,11 +94,11 @@ DashboardWidget::DashboardWidget( QWidget* parent )
         area->setPalette( pal );
         area->setAutoFillBackground( true );
         area->setFrameShape( QFrame::NoFrame );
-        area->setAttribute( Qt::WA_MacShowFocusRect, 0 );
+        area->setAttribute( Qt::WA_MacShowFocusRect, 0 );*/
 
         QVBoxLayout* layout = new QVBoxLayout();
         layout->addWidget( headerWidget );
-        layout->addWidget( area );
+        layout->addWidget( widget );
         setLayout( layout );
         TomahawkUtils::unmarginLayout( layout );
     }

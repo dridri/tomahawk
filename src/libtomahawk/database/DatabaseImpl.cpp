@@ -199,6 +199,7 @@ Tomahawk::DatabaseImpl::dumpDatabase()
 void
 Tomahawk::DatabaseImpl::loadIndex()
 {
+    connect( m_fuzzyIndex, SIGNAL( indexStarted() ), SIGNAL( indexStarted() ) );
     connect( m_fuzzyIndex, SIGNAL( indexReady() ), SIGNAL( indexReady() ) );
     m_fuzzyIndex->loadLuceneIndex();
 }
@@ -307,10 +308,12 @@ Tomahawk::DatabaseImpl::file( int fid )
         if ( !s->isLocal() )
             url = QString( "servent://%1\t%2" ).arg( s->nodeId() ).arg( url );
 
-        r = Tomahawk::Result::get( url );
-
         Tomahawk::track_ptr track = Tomahawk::Track::get( query.value( 9 ).toUInt(), query.value( 11 ).toString(), query.value( 13 ).toString(), query.value( 12 ).toString(), query.value( 5 ).toUInt(), query.value( 14 ).toString(), 0, 0 );
-        r->setTrack( track );
+        if ( !track )
+            return r;
+        r = Tomahawk::Result::get( url, track );
+        if ( !r )
+            return r;
 
         r->setModificationTime( query.value( 1 ).toUInt() );
         r->setSize( query.value( 2 ).toUInt() );
@@ -627,15 +630,17 @@ Tomahawk::DatabaseImpl::resultFromHint( const Tomahawk::query_ptr& origquery )
     }
     else if ( TomahawkUtils::whitelistedHttpResultHint( url ) )
     {
+        Tomahawk::track_ptr track = Tomahawk::Track::get( origquery->queryTrack()->artist(),
+                                                          origquery->queryTrack()->track(),
+                                                          origquery->queryTrack()->album(),
+                                                          origquery->queryTrack()->duration() );
+
         // Return http resulthint directly
-        res = Tomahawk::Result::get( url );
+        res = Tomahawk::Result::get( url, track );
         res->setRID( uuid() );
         res->setScore( 1.0 );
         const QUrl u = QUrl::fromUserInput( url );
         res->setFriendlySource( u.host() );
-
-        Tomahawk::track_ptr track = Tomahawk::Track::get( origquery->queryTrack()->artist(), origquery->queryTrack()->track(), origquery->queryTrack()->album(), origquery->queryTrack()->duration() );
-        res->setTrack( track );
 
         ResultUrlChecker* checker = new ResultUrlChecker( origquery, QList< result_ptr >() << res );
         QEventLoop loop;
@@ -694,12 +699,17 @@ Tomahawk::DatabaseImpl::resultFromHint( const Tomahawk::query_ptr& origquery )
         if ( !s->isLocal() )
             url = QString( "servent://%1\t%2" ).arg( s->nodeId() ).arg( url );
 
-        res = Tomahawk::Result::get( url );
-
-        Tomahawk::track_ptr track = Tomahawk::Track::get( query.value( 9 ).toUInt(), query.value( 11 ).toString(), query.value( 13 ).toString(), query.value( 12 ).toString(), query.value( 5 ).toInt(), query.value( 14 ).toString(), query.value( 16 ).toUInt(), query.value( 17 ).toUInt() );
+        Tomahawk::track_ptr track = Tomahawk::Track::get( query.value( 9 ).toUInt(),
+                                                          query.value( 11 ).toString(),
+                                                          query.value( 13 ).toString(),
+                                                          query.value( 12 ).toString(),
+                                                          query.value( 5 ).toInt(),
+                                                          query.value( 14 ).toString(),
+                                                          query.value( 16 ).toUInt(),
+                                                          query.value( 17 ).toUInt() );
         track->loadAttributes();
-        res->setTrack( track );
 
+        res = Tomahawk::Result::get( url, track );
         res->setModificationTime( query.value( 1 ).toUInt() );
         res->setSize( query.value( 2 ).toUInt() );
         res->setMimetype( query.value( 4 ).toString() );

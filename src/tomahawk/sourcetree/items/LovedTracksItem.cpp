@@ -24,7 +24,8 @@
 #include "DropJob.h"
 #include "ViewManager.h"
 
-#include "playlist/FlexibleView.h"
+#include "viewpages/PlaylistViewPage.h"
+#include "playlist/ContextView.h"
 #include "playlist/TrackView.h"
 #include "playlist/TopLovedTracksModel.h"
 #include "playlist/TrackItemDelegate.h"
@@ -73,20 +74,20 @@ LovedTracksItem::activate()
     if ( !m_lovedTracksPage )
     {
         SourceItem* par = dynamic_cast< SourceItem* >( parent() );
-        FlexibleView* pv = new FlexibleView( ViewManager::instance()->widget() );
+        PlaylistViewPage* pv = new PlaylistViewPage( ViewManager::instance()->widget() );
         pv->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::LovedPlaylist, TomahawkUtils::Original, QSize( 128, 128 ) ) );
 
         TopLovedTracksModel* raModel = new TopLovedTracksModel( pv );
         raModel->setTitle( text() );
 
-        TrackItemDelegate* del = new TrackItemDelegate( TrackItemDelegate::LovedTracks, pv->trackView(), pv->trackView()->proxyModel() );
-        pv->trackView()->setPlaylistItemDelegate( del );
+        TrackItemDelegate* del = new TrackItemDelegate( TrackItemDelegate::LovedTracks, pv->view()->trackView(), pv->view()->trackView()->proxyModel() );
+        pv->view()->trackView()->setPlaylistItemDelegate( del );
 
-        pv->setEmptyTip( tr( "Sorry, we could not find any of your Favorites!" ) );
+        pv->view()->trackView()->setEmptyTip( tr( "Sorry, we could not find any of your Favorites!" ) );
         if ( !par )
         {
             raModel->setDescription( tr( "The most loved tracks from all your friends" ) );
-            pv->setGuid( QString( "lovedtracks" ) );
+            pv->view()->setGuid( QString( "lovedtracks" ) );
         }
         else
         {
@@ -95,10 +96,10 @@ LovedTracksItem::activate()
             else
                 raModel->setDescription( tr( "All of %1's loved tracks" ).arg( par->source()->friendlyName() ) );
 
-            pv->setGuid( QString( "lovedtracks/%1" ).arg( par->source()->nodeId() ) );
+            pv->view()->setGuid( QString( "lovedtracks/%1" ).arg( par->source()->nodeId() ) );
         }
 
-        pv->setPlaylistModel( raModel );
+        pv->view()->trackView()->setPlayableModel( raModel );
         raModel->setSource( !par ? source_ptr() : par->source() );
 
         m_lovedTracksPage = pv;

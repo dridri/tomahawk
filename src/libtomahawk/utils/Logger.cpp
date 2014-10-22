@@ -38,10 +38,11 @@
 
 using namespace std;
 
-ofstream logfile;
+ofstream logStream;
 static int s_threshold = -1;
 QMutex s_mutex;
 bool shutdownInProgress = false;
+
 
 namespace Logger
 {
@@ -75,13 +76,13 @@ log( const char *msg, unsigned int debugLevel, bool toDisk = true )
 
         #ifdef LOG_SQL_QUERIES
         if ( debugLevel == LOGSQL )
-            logfile << "TSQLQUERY: ";
+            logStream << "TSQLQUERY: ";
         #endif
 
         if ( shutdownInProgress )
         {
             // Do not use locales anymore in shutdown
-            logfile << QDate::currentDate().day() << "."
+            logStream << QDate::currentDate().day() << "."
                     << QDate::currentDate().month() << "."
                     << QDate::currentDate().year() << " - "
                     << QTime::currentTime().hour() << ":"
@@ -92,14 +93,14 @@ log( const char *msg, unsigned int debugLevel, bool toDisk = true )
         }
         else
         {
-            logfile << QDate::currentDate().toString().toUtf8().data()
+            logStream << QDate::currentDate().toString().toUtf8().data()
                     << " - "
                     << QTime::currentTime().toString().toUtf8().data()
                     << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
                     << msg << endl;
         }
 
-        logfile.flush();
+        logStream.flush();
     }
 
     if ( debugLevel <= LOGEXTRA || (int)debugLevel <= s_threshold )
@@ -108,20 +109,20 @@ log( const char *msg, unsigned int debugLevel, bool toDisk = true )
 
         if ( shutdownInProgress )
         {
-            cout << QTime::currentTime().hour() << ":"
+            wcout << QTime::currentTime().hour() << ":"
                  << QTime::currentTime().minute() << ":"
                  << QTime::currentTime().second()
-                 << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
+                 << " [" << QString::number( debugLevel ).toStdWString().c_str() << "]: "
                  << msg << endl;
         }
         else
         {
-            cout << QTime::currentTime().toString().toUtf8().data()
-                 << " [" << QString::number( debugLevel ).toUtf8().data() << "]: "
+            wcout << QTime::currentTime().toString().toUtf8().data()
+                 << " [" << QString::number( debugLevel ).toStdWString().c_str() << "]: "
                  << msg << endl;
         }
 
-        cout.flush();
+        wcout.flush();
     }
 }
 
@@ -164,38 +165,38 @@ TomahawkLogHandler( QtMsgType type, const char* msg )
 }
 
 
-QString
-logFile()
-{
-    return TomahawkUtils::appLogDir().filePath( "Tomahawk.log" );
-}
-
 
 void
-setupLogfile()
+setupLogfile( QFile& f )
 {
-    if ( QFileInfo( logFile() ).size() > LOGFILE_SIZE )
+    if ( QFileInfo( f ).size() > LOGFILE_SIZE )
     {
         QByteArray lc;
         {
-            QFile f( logFile() );
             f.open( QIODevice::ReadOnly | QIODevice::Text );
             f.seek( f.size() - ( LOGFILE_SIZE - ( LOGFILE_SIZE / 4 ) ) );
             lc = f.readAll();
             f.close();
         }
 
-        QFile::remove( logFile() );
+        f.remove();
 
         {
-            QFile f( logFile() );
             f.open( QIODevice::WriteOnly | QIODevice::Text );
             f.write( lc );
             f.close();
         }
     }
 
-    logfile.open( logFile().toUtf8().constData(), ios::app );
+#ifdef _WIN32
+    // this is not supported in upstream libstdc++ as shipped with GCC
+    // GCC needs the patch from https://gcc.gnu.org/ml/libstdc++/2011-06/msg00066.html applied
+    // we could create a CMake check like the one for taglib, but I don't care right now :P
+    logStream.open( f.fileName().toStdWString().c_str() );
+#else
+    logStream.open( f.fileName().toStdString().c_str() );
+#endif
+
 #if QT_VERSION >= QT_VERSION_CHECK( 5, 0, 0 )
     qInstallMessageHandler( TomahawkLogHandler );
 #else

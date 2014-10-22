@@ -2,7 +2,7 @@
  *
  *   Copyright 2010-2011, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
- *   Copyright 2010-2013, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -21,8 +21,6 @@
 
 #include "SourceItem.h"
 
-#include <libtomahawk-widgets/SocialPlaylistWidget.h>
-
 #include "CategoryItems.h"
 #include "database/Database.h"
 #include "DropJob.h"
@@ -34,12 +32,13 @@
 #include "LovedTracksItem.h"
 #include "Source.h"
 #include "SourceList.h"
-#include "playlist/FlexibleView.h"
-#include "playlist/PlaylistView.h"
+#include "playlist/ContextView.h"
+#include "playlist/TrackView.h"
 #include "playlist/RecentlyAddedModel.h"
 #include "playlist/RecentlyPlayedModel.h"
 #include "sip/PeerInfo.h"
 #include "sip/SipPlugin.h"
+#include "viewpages/PlaylistViewPage.h"
 #include "widgets/HistoryWidget.h"
 #include "utils/ImageRegistry.h"
 #include "utils/TomahawkUtilsGui.h"
@@ -58,14 +57,11 @@ SourceItem::SourceItem( SourcesModel* mdl, SourceTreeItem* parent, const Tomahaw
     , m_stations( 0 )
     , m_latchedOn( false )
     , m_sourceInfoItem( 0 )
-    , m_coolPlaylistsItem( 0 )
     , m_sourceInfoPage( 0 )
-    , m_coolPlaylistsPage( 0 )
     , m_latestAdditionsPage( 0 )
     , m_recentPlaysPage( 0 )
 {
-    if ( !m_source )
-        return;
+    Q_ASSERT( m_source );
 
     connect( source.data(), SIGNAL( collectionAdded( Tomahawk::collection_ptr ) ),
              SLOT( onCollectionAdded( Tomahawk::collection_ptr ) ) );
@@ -78,16 +74,18 @@ SourceItem::SourceItem( SourcesModel* mdl, SourceTreeItem* parent, const Tomahaw
     }
 
 /*    m_sourceInfoItem = new GenericPageItem( model(), this, tr( "New Additions" ), QIcon( RESPATH "images/new-additions.png" ),
-                                            boost::bind( &SourceItem::sourceInfoClicked, this ),
-                                            boost::bind( &SourceItem::getSourceInfoPage, this ) );*/
+                                            bind( &SourceItem::sourceInfoClicked, this ),
+                                            bind( &SourceItem::getSourceInfoPage, this ) );*/
 
-    m_latestAdditionsItem = new GenericPageItem( model(), this, tr( "Latest Additions" ), ImageRegistry::instance()->icon( RESPATH "images/new-additions.svg" ),
-                                                 boost::bind( &SourceItem::latestAdditionsClicked, this ),
-                                                 boost::bind( &SourceItem::getLatestAdditionsPage, this ) );
+    m_latestAdditionsItem = new GenericPageItem( model(), this, tr( "Latest Additions" ),
+                                                 ImageRegistry::instance()->icon( RESPATH "images/new-additions.svg" ),
+                                                 std::bind( &SourceItem::latestAdditionsClicked, this ),
+                                                 std::bind( &SourceItem::getLatestAdditionsPage, this ) );
 
-    m_recentPlaysItem = new GenericPageItem( model(), this, tr( "History" ), ImageRegistry::instance()->icon( RESPATH "images/recently-played.svg" ),
-                                             boost::bind( &SourceItem::recentPlaysClicked, this ),
-                                             boost::bind( &SourceItem::getRecentPlaysPage, this ) );
+    m_recentPlaysItem = new GenericPageItem( model(), this, tr( "History" ),
+                                             ImageRegistry::instance()->icon( RESPATH "images/recently-played.svg" ),
+                                             std::bind( &SourceItem::recentPlaysClicked, this ),
+                                             std::bind( &SourceItem::getRecentPlaysPage, this ) );
 
     new LovedTracksItem( model(), this );
 
@@ -214,10 +212,7 @@ void
 SourceItem::activate()
 {
     ViewPage* p = 0;
-    if ( source().isNull() )
-        p = ViewManager::instance()->showSuperCollection();
-    else
-        emit toggleExpandRequest( this );
+    emit toggleExpandRequest( this );
 
     model()->linkSourceItemToPage( this, p );
 }
@@ -237,10 +232,8 @@ SourceItem::pixmap( const QSize& size ) const
     {
         return TomahawkUtils::defaultPixmap( TomahawkUtils::SuperCollection, TomahawkUtils::Original, size );
     }
-    else
-    {
-        return m_source->avatar( TomahawkUtils::RoundedCorners, size, true );
-    }
+
+    return m_source->avatar( TomahawkUtils::RoundedCorners, size, true );
 }
 
 
@@ -386,8 +379,8 @@ SourceItem::performAddCollectionItem( const collection_ptr& collection )
                                                      this,
                                                      collection->itemName(),
                                                      collection->icon(),
-                                                     boost::bind( &SourceItem::collectionClicked, this, collection ),
-                                                     boost::bind( &SourceItem::getCollectionPage, this, collection ) );
+                                                     std::bind( &SourceItem::collectionClicked, this, collection ),
+                                                     std::bind( &SourceItem::getCollectionPage, this, collection ) );
         i->setSortValue( -340 );
         item = i;
     }
@@ -580,32 +573,11 @@ SourceItem::getCollectionPage( const Tomahawk::collection_ptr& collection ) cons
 
 
 ViewPage*
-SourceItem::coolPlaylistsClicked()
-{
-    if ( !m_source.isNull() )
-        return 0;
-
-    if ( !m_coolPlaylistsPage )
-        m_coolPlaylistsPage = new Tomahawk::Widgets::SocialPlaylistWidget( ViewManager::instance()->widget() );
-
-    ViewManager::instance()->show( m_coolPlaylistsPage );
-    return m_coolPlaylistsPage;
-}
-
-
-ViewPage*
-SourceItem::getCoolPlaylistsPage() const
-{
-    return m_coolPlaylistsPage;
-}
-
-
-ViewPage*
 SourceItem::latestAdditionsClicked()
 {
     if ( !m_latestAdditionsPage )
     {
-        FlexibleView* pv = new FlexibleView( ViewManager::instance()->widget() );
+        PlaylistViewPage* pv = new PlaylistViewPage( ViewManager::instance()->widget() );
         pv->setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::NewAdditions,
                                                      TomahawkUtils::Original,
                                                      TomahawkUtils::DpiScaler::scaled( pv, 80, 80 ) ) );
@@ -618,13 +590,12 @@ SourceItem::latestAdditionsClicked()
         else
             raModel->setDescription( tr( "Latest additions to %1's collection" ).arg( m_source->friendlyName() ) );
 
-        pv->setPlayableModel( raModel );
-        pv->trackView()->sortByColumn( PlayableModel::Age, Qt::DescendingOrder );
-        pv->detailedView()->sortByColumn( PlayableModel::Age, Qt::DescendingOrder );
-        pv->setEmptyTip( tr( "Sorry, we could not find any recent additions!" ) );
+        pv->view()->trackView()->setPlayableModel( raModel );
+        pv->view()->trackView()->sortByColumn( PlayableModel::Age, Qt::DescendingOrder );
+        pv->view()->trackView()->setEmptyTip( tr( "Sorry, we could not find any recent additions!" ) );
         raModel->setSource( m_source );
 
-        pv->setGuid( QString( "latestadditions/%1" ).arg( m_source->nodeId() ) );
+        pv->view()->setGuid( QString( "latestadditions/%1" ).arg( m_source->nodeId() ) );
 
         m_latestAdditionsPage = pv;
     }

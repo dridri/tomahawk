@@ -24,21 +24,13 @@
 #include "config.h"
 #include "DllMacro.h"
 
-#if defined(_WEBSOCKETPP_CPP11_STL_) || defined(CXX_STD_FUNCTIONAL)
-#include <functional>
-using std::function;
-#else
-#include <tr1/functional>
-using std::tr1::function;
-#endif
-
 #include <QMetaMethod>
 #include <QObject>
 #include <QPointer>
 #include <QSharedPointer>
 
-#include <boost/noncopyable.hpp>
-#include <boost/scoped_ptr.hpp>
+#include <functional>
+#include <memory>
 
 namespace _detail {
 
@@ -62,19 +54,19 @@ class ClosureArgument : public ClosureArgumentWrapper {
   T data_;
 };
 
-class DLLEXPORT Closure : public QObject, boost::noncopyable {
+class DLLEXPORT Closure : public QObject {
   Q_OBJECT
 
  public:
   Closure(QObject* sender, const char* signal,
           QObject* receiver, const char* slot,
-          const ClosureArgumentWrapper* val0 = 0,
-          const ClosureArgumentWrapper* val1 = 0,
-          const ClosureArgumentWrapper* val2 = 0,
-          const ClosureArgumentWrapper* val3 = 0);
+          const ClosureArgumentWrapper* val0 = nullptr,
+          const ClosureArgumentWrapper* val1 = nullptr,
+          const ClosureArgumentWrapper* val2 = nullptr,
+          const ClosureArgumentWrapper* val3 = nullptr);
 
   Closure(QObject* sender, const char* signal,
-          function<void()> callback);
+          std::function<void()> callback);
 
   void setAutoDelete( bool autoDelete ) { autoDelete_ = autoDelete; }
 
@@ -94,17 +86,19 @@ class DLLEXPORT Closure : public QObject, boost::noncopyable {
   void Cleanup();
 
  private:
+  Q_DISABLE_COPY(Closure)
+
   void Connect(QObject* sender, const char* signal);
 
   QMetaMethod slot_;
-  function<void()> callback_;
+  std::function<void()> callback_;
   bool autoDelete_;
   QPointer<QObject> outOfThreadReceiver_;
 
-  boost::scoped_ptr<const ClosureArgumentWrapper> val0_;
-  boost::scoped_ptr<const ClosureArgumentWrapper> val1_;
-  boost::scoped_ptr<const ClosureArgumentWrapper> val2_;
-  boost::scoped_ptr<const ClosureArgumentWrapper> val3_;
+  std::unique_ptr<const ClosureArgumentWrapper> val0_;
+  std::unique_ptr<const ClosureArgumentWrapper> val1_;
+  std::unique_ptr<const ClosureArgumentWrapper> val2_;
+  std::unique_ptr<const ClosureArgumentWrapper> val3_;
 };
 
 class DLLEXPORT SharedPointerWrapper {
@@ -135,10 +129,10 @@ class SharedClosure : public Closure {
  public:
   SharedClosure(SharedPointerWrapper* sender, const char* signal,
                 QObject* receiver, const char* slot,
-                const ClosureArgumentWrapper* val0 = 0,
-                const ClosureArgumentWrapper* val1 = 0,
-                const ClosureArgumentWrapper* val2 = 0,
-                const ClosureArgumentWrapper* val3 = 0)
+                const ClosureArgumentWrapper* val0 = nullptr,
+                const ClosureArgumentWrapper* val1 = nullptr,
+                const ClosureArgumentWrapper* val2 = nullptr,
+                const ClosureArgumentWrapper* val3 = nullptr)
       : Closure(sender->data(), signal,
                 receiver, slot,
                 val0, val1, val2, val3),
@@ -146,7 +140,7 @@ class SharedClosure : public Closure {
   }
 
  private:
-  boost::scoped_ptr<SharedPointerWrapper> shared_sender_;
+  std::unique_ptr<SharedPointerWrapper> shared_sender_;
 };
 
 }  // namespace _detail
@@ -215,7 +209,7 @@ _detail::Closure* NewClosure(
 
 template <typename TP>
 _detail::Closure* NewClosure(
-    QSharedPointer<TP> sender,
+    std::unique_ptr<TP> sender,
     const char* signal,
     QObject* receiver,
     const char* slot) {

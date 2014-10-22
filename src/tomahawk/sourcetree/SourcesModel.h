@@ -62,6 +62,7 @@ public:
         GenericPage = 6,
         TemporaryPage = 7,
         LovedTracksPage = 10,
+        DeletablePage = 15,
 
         Collection = 14,
         ScriptCollection = 11,
@@ -85,7 +86,7 @@ public:
         CustomActionRole        = Qt::UserRole + 16 // QList< QAction* >
     };
 
-    SourcesModel( QObject* parent = 0 );
+    SourcesModel( QObject* parent = nullptr );
     virtual ~SourcesModel();
 
     static QString rowTypeToString( RowType type );

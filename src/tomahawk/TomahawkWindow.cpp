@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2013, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2012, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2012,      Teo Mrnjavac <teo@kde.org>
@@ -49,13 +49,13 @@
 #include "utils/NetworkAccessManager.h"
 #include "widgets/AccountsToolButton.h"
 #include "widgets/AnimatedSplitter.h"
-#include "widgets/NewPlaylistWidget.h"
-#include "widgets/SearchWidget.h"
 #include "widgets/ContainedMenuButton.h"
 #include "thirdparty/Qocoa/qsearchfield.h"
 #include "playlist/dynamic/GeneratorInterface.h"
 #include "playlist/PlaylistModel.h"
-#include "playlist/PlaylistView.h"
+#include "playlist/PlayableProxyModel.h"
+#include "playlist/ContextView.h"
+#include "playlist/TrackView.h"
 #include "playlist/QueueView.h"
 #include "jobview/JobStatusView.h"
 #include "jobview/JobStatusModel.h"
@@ -63,6 +63,7 @@
 #include "jobview/JobStatusModel.h"
 #include "sip/SipPlugin.h"
 #include "filemetadata/ScanManager.h"
+#include "viewpages/SearchViewPage.h"
 #include "viewpages/whatsnew_0_8/WhatsNew_0_8.h"
 
 #include "Playlist.h"
@@ -117,7 +118,7 @@ TomahawkWindow::TomahawkWindow( QWidget* parent )
     new ViewManager( this );
     QueueView* queueView = new QueueView();
     ViewManager::instance()->setQueue( queueView );
-    AudioEngine::instance()->setQueue( queueView->trackView()->proxyModel()->playlistInterface() );
+    AudioEngine::instance()->setQueue( queueView->view()->trackView()->proxyModel()->playlistInterface() );
 
     m_audioControls = new AudioControls( this );
 
@@ -355,6 +356,9 @@ TomahawkWindow::setupToolBar()
     addAction( ActionCollection::instance()->getAction( "quit" ) );
 #endif
 
+    onHistoryBackAvailable( false );
+    onHistoryForwardAvailable( false );
+
     balanceToolbar();
 }
 
@@ -403,7 +407,9 @@ TomahawkWindow::balanceToolbar()
     }
 }
 
-void TomahawkWindow::toggleLoved()
+
+void
+TomahawkWindow::toggleLoved()
 {
     if ( !AudioEngine::instance()->currentTrack().isNull() )
     {
@@ -413,6 +419,7 @@ void TomahawkWindow::toggleLoved()
 #endif
     }
 }
+
 
 void
 TomahawkWindow::setupSideBar()
@@ -613,6 +620,7 @@ TomahawkWindow::setupWindowsButtons()
 #endif//QT_VERSION < QT_VERSION_CHECK( 5, 2, 0 )
 }
 
+
 #if QT_VERSION < QT_VERSION_CHECK( 5, 2, 0 )
 HICON
 TomahawkWindow::thumbIcon( TomahawkUtils::ImageType type )
@@ -625,9 +633,11 @@ TomahawkWindow::thumbIcon( TomahawkUtils::ImageType type )
     }
     return thumbIcons[type];
 }
+
 #else
 
-QIcon TomahawkWindow::thumbIcon(TomahawkUtils::ImageType type)
+QIcon
+TomahawkWindow::thumbIcon(TomahawkUtils::ImageType type)
 {
     return  TomahawkUtils::defaultPixmap( type , TomahawkUtils::Original, QSize( 40, 40 ) );
 }
@@ -693,6 +703,31 @@ TomahawkWindow::setupMenuBar()
 }
 
 
+bool
+TomahawkWindow::eventFilter( QObject* obj, QEvent* event )
+{
+    if ( event->type() == QEvent::MouseButtonPress )
+    {
+        QMouseEvent* me = static_cast<QMouseEvent*>(event);
+        switch ( me->button() )
+        {
+            case Qt::XButton1:
+                m_backAction->trigger();
+                break;
+
+            case Qt::XButton2:
+                m_forwardAction->trigger();
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    return QObject::eventFilter( obj, event );
+}
+
+
 void
 TomahawkWindow::changeEvent( QEvent* e )
 {
@@ -720,14 +755,9 @@ TomahawkWindow::closeEvent( QCloseEvent* e )
         e->ignore();
         return;
     }
-#else
-    if ( m_trayIcon )
-    {
-        m_trayIcon->setShowHideWindow( false );
-    }
 #endif
 
-    e->accept();
+    QMainWindow::closeEvent( e );
 }
 
 
@@ -845,6 +875,7 @@ TomahawkWindow::winEvent( MSG* msg, long* result )
     return false;
 }
 #endif//defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK( 5, 2, 0 )
+
 
 void
 TomahawkWindow::audioStateChanged( AudioState newState, AudioState oldState )
@@ -983,6 +1014,7 @@ TomahawkWindow::updateWindowsLoveButton()
 #endif//defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK( 5, 2, 0 )
 }
 
+
 void
 TomahawkWindow::onHistoryBackAvailable( bool avail )
 {
@@ -1000,10 +1032,15 @@ TomahawkWindow::onHistoryForwardAvailable( bool avail )
 void
 TomahawkWindow::showSettingsDialog()
 {
-    SettingsDialog* settingsDialog = new SettingsDialog;
-    connect( settingsDialog, SIGNAL( finished( bool ) ), settingsDialog, SLOT( deleteLater() ) );
+    if ( m_settingsDialog )
+        return;
 
-    settingsDialog->show();
+    m_settingsDialog = new SettingsDialog;
+    // This needs to be a QueuedConnection, so that deleteLater() actually works.
+    connect( m_settingsDialog.data(), SIGNAL( finished( bool ) ),
+             m_settingsDialog.data(), SLOT( deleteLater() ), Qt::QueuedConnection );
+
+    m_settingsDialog->show();
 }
 
 
@@ -1021,11 +1058,13 @@ TomahawkWindow::legalInfo()
     QDesktopServices::openUrl( QUrl( "http://www.tomahawk-player.org/legal.html" ) );
 }
 
+
 void
 TomahawkWindow::getSupport()
 {
     QDesktopServices::openUrl( QUrl( "https://tomahawk.uservoice.com" ) );
 }
+
 
 void
 TomahawkWindow::reportBug()
@@ -1033,19 +1072,21 @@ TomahawkWindow::reportBug()
     QDesktopServices::openUrl( QUrl( "https://bugs.tomahawk-player.org" ) );
 }
 
+
 void
 TomahawkWindow::helpTranslate()
 {
     QDesktopServices::openUrl( QUrl( "https://www.transifex.com/projects/p/tomahawk/" ) );
 }
 
+
 void
 TomahawkWindow::openLogfile()
 {
 #ifdef WIN32
-    ShellExecuteW( 0, 0, (LPCWSTR)Logger::logFile().utf16(), 0, 0, SW_SHOWNORMAL );
+    ShellExecuteW( 0, 0, (LPCWSTR)TomahawkUtils::logFilePath().utf16(), 0, 0, SW_SHOWNORMAL );
 #else
-    QDesktopServices::openUrl( QUrl::fromLocalFile( Logger::logFile() ) );
+    QDesktopServices::openUrl( QUrl::fromLocalFile( TomahawkUtils::logFilePath() ) );
 #endif
 }
 
@@ -1380,13 +1421,17 @@ TomahawkWindow::checkForUpdates()
 void
 TomahawkWindow::onSearch( const QString& search )
 {
-	if ( !search.trimmed().isEmpty() ) {
-		if( search.startsWith( "tomahawk:" ) ) {
-			APP->loadUrl(search);
-		} else {
-			ViewManager::instance()->show( new SearchWidget( search, this ) );
-		}
-	}
+    if ( !search.trimmed().isEmpty() )
+    {
+        if ( search.startsWith( "tomahawk:" ) )
+        {
+            APP->loadUrl( search );
+        }
+        else
+        {
+            ViewManager::instance()->show( new SearchWidget( search, this ) );
+        }
+    }
 }
 
 

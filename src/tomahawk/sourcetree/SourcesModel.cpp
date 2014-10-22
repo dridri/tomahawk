@@ -37,8 +37,6 @@
 #include "GlobalActionManager.h"
 #include "DropJob.h"
 #include "items/PlaylistItems.h"
-#include "playlist/TreeView.h"
-#include "playlist/PlaylistView.h"
 #include "playlist/dynamic/widgets/DynamicWidget.h"
 #include "utils/Closure.h"
 #include "utils/ImageRegistry.h"
@@ -47,10 +45,6 @@
 
 #include <QMimeData>
 #include <QSize>
-
-#include <boost/bind.hpp>
-#include <boost/lambda/construct.hpp>
-#include <boost/lambda/bind.hpp>
 
 using namespace Tomahawk;
 
@@ -314,17 +308,6 @@ SourcesModel::appendGroups()
     InboxItem* inbox = new InboxItem( this, m_browse );
     inbox->setSortValue( 4 );
 
-    // super collection
-/*    GenericPageItem* sc = new GenericPageItem( this, m_browse, tr( "SuperCollection" ), ImageRegistry::instance()->icon( RESPATH "images/supercollection.svg" ),
-                                                  boost::bind( &ViewManager::showSuperCollection, ViewManager::instance() ),
-                                                  boost::bind( &ViewManager::superCollectionView, ViewManager::instance() ) );
-    sc->setSortValue( 5 );*/
-
-    GenericPageItem* newReleases = new GenericPageItem( this, m_browse, tr( "New Releases" ), ImageRegistry::instance()->icon( RESPATH "images/new-releases.svg" ),
-                                                boost::bind( &ViewManager::showNewReleasesPage, ViewManager::instance() ),
-                                                boost::bind( &ViewManager::newReleasesWidget, ViewManager::instance() ) );
-    newReleases->setSortValue( 7 );
-
     m_collectionsGroup = new GroupItem( this, m_rootItem, tr( "Friends" ), 4 );
     m_cloudGroup = new GroupItem( this, m_rootItem, tr( "Cloud Collections" ), 5 );
 
@@ -342,15 +325,15 @@ void
 SourcesModel::appendPageItem( const QString& name, ViewPage* page, int sortValue )
 {
     // If there should be no page item, there is nothing to do for us here.
-    if ( !page->addPageItem() ) {
+    if ( !page->addPageItem() )
         return;
-    }
 
     QModelIndex parentIndex = indexFromItem( m_browse );
     beginInsertRows( parentIndex, rowCount( parentIndex ), rowCount( parentIndex ) );
-    GenericPageItem* pageItem = new GenericPageItem( this, m_browse, page->title(), page->pixmap(),
-                                            boost::bind( &ViewManager::showDynamicPage, ViewManager::instance(), name ),
-                                            boost::bind( &ViewManager::dynamicPageWidget, ViewManager::instance(), name ) );
+    GenericPageItem* pageItem = new GenericPageItem( this, m_browse, page->title(),
+                                                     page->pixmap(),
+                                                     std::bind( &ViewManager::showDynamicPage, ViewManager::instance(), name ),
+                                                     std::bind( &ViewManager::dynamicPageWidget, ViewManager::instance(), name ) );
     pageItem->setDeletable( page->isDeletable() );
 
     if ( sortValue )
@@ -579,7 +562,7 @@ SourcesModel::onScriptCollectionRemoved( const collection_ptr& collection )
 
 
 void
-SourcesModel::onViewPageRemoved( Tomahawk::ViewPage *p )
+SourcesModel::onViewPageRemoved( Tomahawk::ViewPage* p )
 {
     p->onItemDeleted();
 }
@@ -677,7 +660,8 @@ SourcesModel::linkSourceItemToPage( SourceTreeItem* item, ViewPage* p )
     }
     m_viewPageDelayedCacheItem = 0;
 
-    if ( p && p->isDeletable() ) {
+    if ( p && p->isDeletable() )
+    {
         NewClosure( item, SIGNAL( removed() ), this, SLOT( onViewPageRemoved( Tomahawk::ViewPage* ) ), p );
     }
 }

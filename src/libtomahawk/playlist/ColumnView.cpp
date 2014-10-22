@@ -41,7 +41,6 @@
 #include <QScrollBar>
 #include <QDrag>
 #include <QMimeData>
-#include <boost/concept_check.hpp>
 
 #define SCROLL_TIMEOUT 280
 
@@ -110,7 +109,7 @@ void
 ColumnView::setModel( QAbstractItemModel* model )
 {
     Q_UNUSED( model );
-    tDebug() << "Explicitly use setPlaylistModel instead";
+    tDebug() << "Explicitly use setTreeModel instead";
     Q_ASSERT( false );
 }
 
@@ -135,7 +134,7 @@ ColumnView::setTreeModel( TreeModel* model )
 
     guid(); // this will set the guid on the header
 
-    if ( m_proxyModel->style() == PlayableProxyModel::Large )
+    if ( m_proxyModel->style() == PlayableProxyModel::Fancy )
     {
         setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
     }

@@ -96,6 +96,7 @@ namespace TomahawkUtils
         NewReleases,
         NewAdditions,
         RecentlyPlayed,
+        Queue,
         AutomaticPlaylist,
         Charts,
         Station,
@@ -133,7 +134,6 @@ namespace TomahawkUtils
     {
         Original,
         CoverInCase,
-        Grid,
         DropShadow,
         RoundedCorners
     };
@@ -147,6 +147,7 @@ namespace TomahawkUtils
     DLLEXPORT QDir appConfigDir();
     DLLEXPORT QDir appDataDir();
     DLLEXPORT QDir appLogDir();
+    DLLEXPORT const QString logFilePath();
 
     DLLEXPORT void installTranslator( QObject* parent );
 

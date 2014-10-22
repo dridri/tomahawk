@@ -21,41 +21,35 @@
 #define VIEWMANAGER_H
 
 #include "Artist.h"
+#include "ViewPage.h"
+#include "ViewPagePlugin.h"
 #include "collection/Collection.h"
 #include "PlaylistInterface.h"
 #include "playlist/QueueView.h"
-#include "ViewPage.h"
-#include "ViewPagePlugin.h"
 
 #include <QObject>
 #include <QHash>
 #include <QStackedWidget>
 
-// best regards to you, mr. pimple aka xhochy :)
-#include <boost/function.hpp>
-
 #include "DllMacro.h"
 
-class AnimatedSplitter;
+#include <functional>
+
 class AlbumModel;
 class GridView;
 class AlbumInfoWidget;
 class ArtistInfoWidget;
-class TreeWidget;
 class CollectionModel;
-class FlexibleView;
-class FlexibleTreeView;
+class PlaylistViewPage;
+class CollectionViewPage;
 class PlaylistModel;
-class PlaylistView;
 class TrackProxyModel;
 class TrackModel;
 class TreeProxyModel;
 class TreeModel;
 class TrackView;
 class SourceInfoWidget;
-class InfoBar;
 class TrackInfoWidget;
-class NewReleasesWidget;
 class QPushButton;
 class InboxModel;
 
@@ -75,13 +69,9 @@ public:
     virtual ~ViewManager();
 
     QWidget* widget() const { return m_widget; }
-    InfoBar* infobar() const { return m_infobar; }
 
     QueueView* queue() const { return m_queue; }
     void setQueue( QueueView* queue ) { m_queue = queue; }
-
-    bool isSuperCollectionVisible() const;
-    bool isNewPlaylistPageVisible() const;
 
     Tomahawk::playlistinterface_ptr currentPlaylistInterface() const;
     Tomahawk::ViewPage* currentPage() const;
@@ -89,10 +79,7 @@ public:
 
     Tomahawk::ViewPage* show( Tomahawk::ViewPage* page );
 
-    Tomahawk::ViewPage* newReleasesWidget() const;
-    Tomahawk::ViewPage* superCollectionView() const;
     Tomahawk::ViewPage* inboxWidget() const;
-
     Tomahawk::ViewPage* dynamicPageWidget( const QString& pageName ) const;
 
     InboxModel* inboxModel();
@@ -101,21 +88,19 @@ public:
     Tomahawk::ViewPage* pageForPlaylist( const Tomahawk::playlist_ptr& pl ) const;
     Tomahawk::ViewPage* pageForDynPlaylist( const Tomahawk::dynplaylist_ptr& pl ) const;
 
-    /// Get a playlist (or dynamic playlist ) from a ViewPage* if the page is PlaylistView or DynamicWidget.
+    /// Get a playlist (or dynamic playlist ) from a ViewPage* if the page is PlaylistViewPage or DynamicWidget.
     /// Lives here but used by SourcesModel
     Tomahawk::playlist_ptr playlistForPage( Tomahawk::ViewPage* ) const;
 
     // only use this is you need to create a playlist and show it directly and want it to be
     // linked to the sidebar. call it right after creating the playlist
-    FlexibleView* createPageForPlaylist( const Tomahawk::playlist_ptr& playlist );
+    PlaylistViewPage* createPageForPlaylist( const Tomahawk::playlist_ptr& playlist );
 
-    FlexibleView* createPageForList( const QString& title, const QList< Tomahawk::query_ptr >& queries );
+    PlaylistViewPage* createPageForList( const QString& title, const QList< Tomahawk::query_ptr >& queries );
 
     void addDynamicPage( Tomahawk::ViewPagePlugin* viewPage, const QString& pageName = QString() );
 
 signals:
-    void filterAvailable( bool b );
-
     void playClicked();
     void pauseClicked();
 
@@ -130,12 +115,10 @@ signals:
     void viewPageAdded( const QString& pageName, Tomahawk::ViewPage* page, int sortValue );
 
 public slots:
-    Tomahawk::ViewPage* showSuperCollection();
-    Tomahawk::ViewPage* showNewReleasesPage();
     Tomahawk::ViewPage* showInboxPage();
     Tomahawk::ViewPage* showQueuePage();
 
-//    void addDynamicPage( const QString& pageName, const QString& text, const QIcon& icon, boost::function< Tomahawk::ViewPage*() > instanceLoader, int sortValue = 0 );
+//    void addDynamicPage( const QString& pageName, const QString& text, const QIcon& icon, function< Tomahawk::ViewPage*() > instanceLoader, int sortValue = 0 );
     Tomahawk::ViewPage* showDynamicPage( const QString& pageName );
 
     void showCurrentTrack();
@@ -160,42 +143,31 @@ public slots:
     void playlistInterfaceChanged( Tomahawk::playlistinterface_ptr );
 
 private slots:
-    void setFilter( const QString& filter );
-    void applyFilter();
-
     void onWidgetDestroyed( QWidget* widget );
 
 private:
     void setPage( Tomahawk::ViewPage* page, bool trackHistory = true );
-    void updateView();
 
     Tomahawk::playlist_ptr playlistForInterface( Tomahawk::playlistinterface_ptr plInterface ) const;
     Tomahawk::dynplaylist_ptr dynamicPlaylistForInterface( Tomahawk::playlistinterface_ptr plInterface ) const;
 
     QWidget* m_widget;
-    InfoBar* m_infobar;
     QStackedWidget* m_stack;
-    AnimatedSplitter* m_splitter;
 
-    TreeModel* m_superCollectionModel;
-    TreeWidget* m_superCollectionView;
     QueueView* m_queue;
-    NewReleasesWidget* m_newReleasesWidget;
     Tomahawk::ViewPage* m_inboxWidget;
     InboxModel* m_inboxModel;
 
     QHash< QString, Tomahawk::ViewPage* > m_dynamicPages;
     QHash< QString, QPointer< Tomahawk::ViewPagePlugin > > m_dynamicPagePlugins;
-    QHash< QString, boost::function< Tomahawk::ViewPage*() > > m_dynamicPagesInstanceLoaders;
-
-    QList< Tomahawk::collection_ptr > m_superCollections;
+    QHash< QString, std::function< Tomahawk::ViewPage*() > > m_dynamicPagesInstanceLoaders;
 
     QHash< Tomahawk::dynplaylist_ptr, QPointer<Tomahawk::DynamicWidget> > m_dynamicWidgets;
-    QHash< Tomahawk::collection_ptr, QPointer<FlexibleTreeView> > m_collectionViews;
+    QHash< Tomahawk::collection_ptr, QPointer<CollectionViewPage> > m_collectionViews;
     QHash< Tomahawk::artist_ptr, QPointer<ArtistInfoWidget> > m_artistViews;
     QHash< Tomahawk::album_ptr, QPointer<AlbumInfoWidget> > m_albumViews;
     QHash< Tomahawk::query_ptr, QPointer<TrackInfoWidget> > m_trackViews;
-    QHash< Tomahawk::playlist_ptr, QPointer<FlexibleView> > m_playlistViews;
+    QHash< Tomahawk::playlist_ptr, QPointer<PlaylistViewPage> > m_playlistViews;
     QHash< Tomahawk::source_ptr, QPointer<SourceInfoWidget> > m_sourceViews;
 
     QList<Tomahawk::ViewPage*> m_pageHistoryBack;
@@ -203,9 +175,6 @@ private:
     Tomahawk::ViewPage* m_currentPage;
 
     Tomahawk::collection_ptr m_currentCollection;
-
-    QTimer m_filterTimer;
-    QString m_filter;
 
     static ViewManager* s_instance;
 };

@@ -212,6 +212,7 @@ TrackView::setPlayableModel( PlayableModel* model )
     {
         disconnect( m_model, SIGNAL( loadingStarted() ), m_loadingSpinner, SLOT( fadeIn() ) );
         disconnect( m_model, SIGNAL( loadingFinished() ), m_loadingSpinner, SLOT( fadeOut() ) );
+        disconnect( m_model, SIGNAL( changed() ), this, SIGNAL( modelChanged() ) );
     }
 
     m_model = model;
@@ -227,8 +228,7 @@ TrackView::setPlayableModel( PlayableModel* model )
 
     switch( m_proxyModel->style() )
     {
-        case PlayableProxyModel::Short:
-        case PlayableProxyModel::Large:
+        case PlayableProxyModel::Fancy:
             setHeaderHidden( true );
             setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
         break;
@@ -240,6 +240,7 @@ TrackView::setPlayableModel( PlayableModel* model )
 
     connect( m_model, SIGNAL( loadingStarted() ), m_loadingSpinner, SLOT( fadeIn() ) );
     connect( m_model, SIGNAL( loadingFinished() ), m_loadingSpinner, SLOT( fadeOut() ) );
+    connect( m_model, SIGNAL( changed() ), SIGNAL( modelChanged() ) );
 
     if ( m_model->isLoading() )
         m_loadingSpinner->fadeIn();
@@ -939,4 +940,11 @@ TrackView::selectFirstTrack()
 //        selectionModel()->select( idx, QItemSelectionModel::SelectCurrent );
         currentChanged( idx, QModelIndex() );
     }
+}
+
+
+PlayableModel*
+TrackView::model() const
+{
+    return m_model.data();
 }

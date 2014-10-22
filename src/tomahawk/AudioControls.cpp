@@ -29,7 +29,9 @@
 
 #include "audio/AudioEngine.h"
 #include "database/Database.h"
-#include "playlist/PlaylistView.h"
+#include "playlist/ContextView.h"
+#include "playlist/TrackView.h"
+#include "playlist/PlayableModel.h"
 #include "utils/TomahawkUtilsGui.h"
 #include "utils/ImageRegistry.h"
 #include "utils/Logger.h"
@@ -59,7 +61,6 @@ AudioControls::AudioControls( QWidget* parent )
     ui->setupUi( this );
     setAutoFillBackground( false );
     setAcceptDrops( true );
-    setBackgroundColor( QColor( "#333333" ) );
     setFixedHeight( scaledY( 85 ) );
 
     QFont f = font();
@@ -746,7 +747,7 @@ AudioControls::droppedTracks( QList< query_ptr > tracks )
     {
         // queue and play the first no matter what
         GlobalActionManager::instance()->handlePlayTrack( tracks.first() );
-        ViewManager::instance()->queue()->trackView()->model()->appendQueries( tracks );
+        ViewManager::instance()->queue()->view()->trackView()->model()->appendQueries( tracks );
     }
 }
 

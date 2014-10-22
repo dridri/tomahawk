@@ -29,7 +29,7 @@
 #include <QList>
 #include <QStringList>
 
-#include <boost/function.hpp>
+#include <functional>
 
 namespace Tomahawk
 {
@@ -37,7 +37,7 @@ namespace Tomahawk
 class PipelinePrivate;
 class Resolver;
 class ExternalResolver;
-typedef boost::function<Tomahawk::ExternalResolver*( QString, QString, QStringList )> ResolverFactoryFunc;
+typedef std::function<Tomahawk::ExternalResolver*( QString, QString, QStringList )> ResolverFactoryFunc;
 
 class DLLEXPORT Pipeline : public QObject
 {
@@ -46,7 +46,7 @@ Q_OBJECT
 public:
     static Pipeline* instance();
 
-    explicit Pipeline( QObject* parent = 0 );
+    explicit Pipeline( QObject* parent = nullptr );
     virtual ~Pipeline();
 
     bool isRunning() const;

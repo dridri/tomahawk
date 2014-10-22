@@ -56,8 +56,6 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 
-#include <boost/bind.hpp>
-
 
 typedef QPair< QList< SipInfo >, Connection* > sipConnectionPair;
 Q_DECLARE_METATYPE( sipConnectionPair )
@@ -89,7 +87,10 @@ Servent::Servent( QObject* parent )
 
     setProxy( QNetworkProxy::NoProxy );
 
-    IODeviceFactoryFunc fac = boost::bind( &Servent::remoteIODeviceFactory, this, _1, _2, _3 );
+    IODeviceFactoryFunc fac = std::bind( &Servent::remoteIODeviceFactory, this,
+                                         std::placeholders::_1,
+                                         std::placeholders::_2,
+                                         std::placeholders::_3 );
     Tomahawk::UrlHandler::registerIODeviceFactory( "servent", fac );
 }
 
@@ -1245,7 +1246,7 @@ Servent::claimOffer( ControlConnection* cc, const QString &nodeid, const QString
 
 void
 Servent::remoteIODeviceFactory( const Tomahawk::result_ptr& result, const QString& url,
-                                boost::function< void ( const QString&, QSharedPointer< QIODevice >& ) > callback )
+                                std::function< void ( const QString&, QSharedPointer< QIODevice >& ) > callback )
 {
     QSharedPointer<QIODevice> sp;
 
@@ -1263,7 +1264,7 @@ Servent::remoteIODeviceFactory( const Tomahawk::result_ptr& result, const QStrin
     StreamConnection* sc = new StreamConnection( this, cc, fileId, result );
     createParallelConnection( cc, sc, QString( "FILE_REQUEST_KEY:%1" ).arg( fileId ) );
 
-    //boost::functions cannot accept temporaries as parameters
+    // std::functions cannot accept temporaries as parameters
     sp = sc->iodevice();
     callback( result->url(), sp );
 }

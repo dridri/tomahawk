@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2013, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2010-2012, Leo Franchi <lfranchi@kde.org>
  *   Copyright 2010-2011, Jeff Mitchell <jeff@tomahawk-player.org>
  *   Copyright 2012,      Teo Mrnjavac <teo@kde.org>
@@ -56,12 +56,12 @@ class QSearchField;
 class SourceTreeView;
 class QAction;
 
+class SettingsDialog;
 class MusicScanner;
 class AudioControls;
 class TomahawkTrayIcon;
 class PlaylistModel;
 class AnimatedSplitter;
-
 class AccountsToolButton;
 
 namespace Ui
@@ -89,6 +89,8 @@ protected:
     void showEvent( QShowEvent* e );
     void hideEvent( QHideEvent* e );
     void keyPressEvent( QKeyEvent* e );
+
+    bool eventFilter( QObject* obj, QEvent* event );
 
 #if defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK( 5, 2, 0 )
     bool winEvent( MSG* message, long* result );
@@ -179,6 +181,7 @@ private:
 #endif
 
     Ui::TomahawkWindow* ui;
+    QPointer<SettingsDialog> m_settingsDialog;
     QSearchField* m_searchWidget;
     AudioControls* m_audioControls;
     TomahawkTrayIcon* m_trayIcon;

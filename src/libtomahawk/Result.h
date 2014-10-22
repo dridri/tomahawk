@@ -34,10 +34,6 @@ class MetadataEditor;
 
 namespace Tomahawk
 {
-class DatabaseCommand_Resolve;
-class DatabaseCommand_AllTracks;
-class DatabaseCommand_AddFiles;
-class DatabaseCommand_LoadFile;
 
 class Resolver;
 
@@ -46,17 +42,27 @@ class DLLEXPORT Result : public QObject
 Q_OBJECT
 
 friend class ::MetadataEditor;
-friend class DatabaseCommand_Resolve;
-friend class DatabaseCommand_AllTracks;
-friend class DatabaseCommand_AddFiles;
-friend class DatabaseCommand_LoadFile;
 
 public:
-    static Tomahawk::result_ptr get( const QString& url );
-    static bool isCached( const QString& url );
-    virtual ~Result();
+    /**
+     * Get a Result instance for an URL if it is cached, otherwise create a new
+     * instance using the supplied Track object.
+     */
+    static Tomahawk::result_ptr get( const QString& url,
+                                     const Tomahawk::track_ptr& track );
 
-    bool isValid() const;
+    /**
+     * Get a Result instance for an URL if it is already cached.
+     *
+     * This will not create a new Result instance if there is no matching
+     * Result in the cache, use Result::get for this.
+     *
+     * @param url Unique result identifier
+     * @return nullptr if the Result is not yet cached
+     */
+    static Tomahawk::result_ptr getCached( const QString& url );
+
+    virtual ~Result();
 
     QVariant toVariant() const;
     QString toString() const;
@@ -130,7 +136,7 @@ private slots:
 
 private:
     // private constructor
-    explicit Result( const QString& url );
+    explicit Result( const QString& url, const Tomahawk::track_ptr& track );
     explicit Result();
 
     mutable RID m_rid;

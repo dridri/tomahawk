@@ -21,8 +21,6 @@
 
 #include "TomahawkApp.h"
 
-#include <boost/bind.hpp>
-
 #include "TomahawkVersion.h"
 #include "AclRegistryImpl.h"
 #include "Album.h"
@@ -53,7 +51,7 @@
 
 #include "accounts/lastfm/LastFmAccount.h"
 #include "accounts/spotify/SpotifyAccount.h"
-#include "accounts/spotify/SpotifyPlaylistUpdater.h"
+//#include "accounts/spotify/SpotifyPlaylistUpdater.h"
 #include "accounts/AccountManager.h"
 #include "audio/AudioEngine.h"
 #include "database/Database.h"
@@ -140,8 +138,8 @@ using namespace Tomahawk;
 
 TomahawkApp::TomahawkApp( int& argc, char *argv[] )
     : TOMAHAWK_APPLICATION( argc, argv )
-    , m_mainwindow( 0 )
-    , m_splashWidget( 0 )
+    , m_mainwindow( nullptr )
+    , m_splashWidget( nullptr )
     , m_headless( false )
 {
     if ( arguments().contains( "--help" ) || arguments().contains( "-h" ) )
@@ -164,7 +162,9 @@ void
 TomahawkApp::init()
 {
     qDebug() << "TomahawkApp thread:" << thread();
-    Logger::setupLogfile();
+    m_logFile.setFileName( TomahawkUtils::logFilePath() );
+    Logger::setupLogfile( m_logFile );
+
     qsrand( QTime( 0, 0, 0 ).secsTo( QTime::currentTime() ) );
 
     tLog() << "Starting Tomahawk...";
@@ -172,7 +172,10 @@ TomahawkApp::init()
     m_headless = true;
     m_headless = arguments().contains( "--headless" );
     setWindowIcon( QIcon( RESPATH "icons/tomahawk-icon-128x128.png" ) );
+
+#ifndef Q_OS_MAC
     setQuitOnLastWindowClosed( false );
+#endif
 
     if ( arguments().contains( "--splash" ) )
     {
@@ -221,8 +224,12 @@ TomahawkApp::init()
     tDebug() << "Init Database.";
     initDatabase();
 
-    Pipeline::instance()->addExternalResolverFactory( boost::bind( &JSResolver::factory, _1, _2, _3 ) );
-    Pipeline::instance()->addExternalResolverFactory( boost::bind( &ScriptResolver::factory, _1, _2, _3 ) );
+    Pipeline::instance()->addExternalResolverFactory(
+                std::bind( &JSResolver::factory, std::placeholders::_1,
+                           std::placeholders::_2, std::placeholders::_3 ) );
+    Pipeline::instance()->addExternalResolverFactory(
+                std::bind( &ScriptResolver::factory, std::placeholders::_1,
+                           std::placeholders::_2, std::placeholders::_3 ) );
 
     new ActionCollection( this );
     connect( ActionCollection::instance()->getAction( "quit" ), SIGNAL( triggered() ), SLOT( quit() ), Qt::UniqueConnection );
@@ -611,6 +618,7 @@ TomahawkApp::onInfoSystemReady()
         {
             m_mainwindow->show();
         }
+        qApp->installEventFilter( m_mainwindow );
     }
 
     tDebug() << "Init Local Collection.";
@@ -647,7 +655,7 @@ TomahawkApp::onInfoSystemReady()
     Tomahawk::EchonestCatalogSynchronizer::instance();
 
     PlaylistUpdaterInterface::registerUpdaterFactory( new XspfUpdaterFactory );
-    PlaylistUpdaterInterface::registerUpdaterFactory( new SpotifyUpdaterFactory );
+//    PlaylistUpdaterInterface::registerUpdaterFactory( new SpotifyUpdaterFactory );
 
     // Following work-around/fix taken from Clementine rev. 13e13ccd9a95 and courtesy of David Sansome
     // A bug in Qt means the wheel_scroll_lines setting gets ignored and replaced
@@ -768,7 +776,7 @@ TomahawkApp::loadUrl( const QString& url )
         QFileInfo info( f );
         if ( info.suffix().toLower() == "xspf" )
         {
-            XSPFLoader* l = new XSPFLoader( true, this );
+            XSPFLoader* l = new XSPFLoader( true, true, this );
             tDebug( LOGINFO ) << "Loading spiff:" << url;
             l->load( QUrl::fromUserInput( url ) );
 

@@ -63,6 +63,10 @@ option(WITH_BINARY_ATTICA "Enable support for downloading binary resolvers autom
 option(LEGACY_KDE_INTEGRATION "Install tomahawk.protocol file, deprecated since 4.6.0" OFF)
 option(WITH_KDE4 "Build with support for KDE specific stuff" ON)
 
+# build options for development purposes
+option(SANITIZE_ADDRESS "Enable Address Sanitizer for memory error detection" OFF)
+option(TOMAHAWK_FINEGRAINED_MESSAGES "Enable even more verbose logging (will hurt performance significantly" OFF)
+
 CMAKE_DEPENDENT_OPTION(WITH_UPOWER "Build with support for UPower events" ON
        "UNIX;NOT APPLE" OFF)
 CMAKE_DEPENDENT_OPTION(WITH_GNOMESHORTCUTHANDLER "Build with shortcut handler for GNOME" ON
@@ -234,14 +238,20 @@ if( BUILD_GUI AND UNIX AND NOT APPLE )
     find_package( X11 )
 endif()
 
-# Check if we can use <functional> or need <tr1/functional>
-include( CheckStdFunctional )
-check_std_functional( CXX_STD_FUNCTIONAL )
-include( CheckStdTr1Functional )
-check_std_tr1_functional( CXX_STD_TR1_FUNCTIONAL )
-if ( NOT CXX_STD_FUNCTIONAL AND NOT CXX_STD_TR1_FUNCTIONAL )
-    message( FATAL_ERROR
-        "Used compiler neither provides std::function nor std::tr1::function")
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag( "-std=c++11" CXX11_FOUND )
+check_cxx_compiler_flag( "-std=c++0x" CXX0X_FOUND )
+check_cxx_compiler_flag( "-stdlib=libc++" LIBCPP_FOUND )
+if(CXX11_FOUND)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+elseif(CXX0X_FOUND)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+else()
+    message(STATUS "${CMAKE_CXX_COMPILER} does not support C++11, please use a
+    different compiler")
+endif()
+if(LIBCPP_FOUND AND APPLE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
 endif()
 
 macro_optional_find_package(Echonest 2.2.0)
@@ -336,7 +346,7 @@ endif()
     macro_log_feature(LIBSNORE_FOUND "Libsnore" "Library for notifications" "https://github.com/TheOneRing/Snorenotify" FALSE "" "")
 endif()
 
-find_package(LIBVLC REQUIRED)
+find_package(LIBVLC REQUIRED 2.1.0)
 macro_log_feature(LIBVLC_FOUND "LibVLC" "Provides audio output" TRUE "" "")
 
 set(QXTWEB_FOUND TRUE)
@@ -370,16 +380,7 @@ if (WITH_KDE4)
 endif(WITH_KDE4)
 macro_log_feature(KDE4_FOUND "KDE4" "Provides support for configuring Telepathy Accounts from inside Tomahawk" "https://www.kde.org" FALSE "" "")
 
-# if(NOT Phonon_FOUND)
-#   macro_optional_find_package(Phonon 4.5.0)
-# endif()
-# macro_log_feature(Phonon_FOUND "Phonon" "The Phonon multimedia library" "http://phonon.kde.org" TRUE "" "")
-
-# if(Phonon_FOUND)
-#     message(STATUS "Phonon found; ensure that phonon-vlc is at least 0.4")
-# endif()
-# 
-IF( KDE4_FOUND OR Phonon_FOUND )
+IF( KDE4_FOUND )
     IF( CMAKE_C_FLAGS )
         # KDE4 adds and removes some compiler flags that we don't like
         # (only for gcc not for clang e.g.)
@@ -406,11 +407,19 @@ CONFIGURE_FILE(
 #     ADD_CUSTOM_TARGET(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
 # ENDIF()
 
-IF( NOT APPLE )
+IF( ( NOT APPLE ) AND ( NOT SANITIZE_ADDRESS ))
     # Make linking as strict on linux as it is on osx. Then we don't break linking on mac so often
+    #
+    # On using Address Sanitizer, we cannot link to the ASAN lib, so
+    # --no-undefined would break the build.
     SET( CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined" )
     SET( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-undefined" )
-ENDIF( NOT APPLE )
+ENDIF()
+
+IF ( SANITIZE_ADDRESS )
+    SET( CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   -fsanitize=address -fno-omit-frame-pointer")
+    SET( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}   -fsanitize=address -fno-omit-frame-pointer")
+ENDIF()
 
 # Early configure these files as we need them later on
 configure_file(TomahawkUse.cmake.in "${PROJECT_BINARY_DIR}/TomahawkUse.cmake" @ONLY)

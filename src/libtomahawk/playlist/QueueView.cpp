@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
 #include "QueueView.h"
 
 #include "playlist/TrackView.h"
+#include "playlist/ContextView.h"
 #include "playlist/PlaylistModel.h"
 #include "playlist/QueueProxyModel.h"
 #include "playlist/TrackItemDelegate.h"
@@ -33,25 +34,26 @@ using namespace Tomahawk;
 
 
 QueueView::QueueView( QWidget* parent )
-    : FlexibleView( parent )
+    : PlaylistViewPage( parent )
 {
-//    setCaption( tr( "Queue Details" ) );
+    view()->setCaption( tr( "Queue Details" ) );
 
-    trackView()->setProxyModel( new QueueProxyModel( trackView() ) );
-    trackView()->proxyModel()->setStyle( PlayableProxyModel::Large );
-    trackView()->setHeaderHidden( true );
-    trackView()->setUniformRowHeights( false );
+    view()->trackView()->setProxyModel( new QueueProxyModel( view()->trackView() ) );
+    view()->trackView()->proxyModel()->setStyle( PlayableProxyModel::Fancy );
+    view()->trackView()->setHeaderHidden( true );
+    view()->trackView()->setUniformRowHeights( false );
 
-    PlaylistModel* queueModel = new PlaylistModel( trackView() );
+    PlaylistModel* queueModel = new PlaylistModel( view()->trackView() );
     queueModel->setAcceptPlayableQueriesOnly( true );
     queueModel->setReadOnly( false );
     queueModel->setTitle( tr( "Queue" ) );
+    setPixmap( TomahawkUtils::defaultPixmap( TomahawkUtils::Queue ) );
 
-    setPlayableModel( queueModel );
-    setEmptyTip( tr( "The queue is currently empty. Drop something to enqueue it!" ) );
+    view()->trackView()->setPlayableModel( queueModel );
+    view()->setEmptyTip( tr( "The queue is currently empty. Drop something to enqueue it!" ) );
 
-    TrackItemDelegate* delegate = new TrackItemDelegate( TrackItemDelegate::LovedTracks, trackView(), trackView()->proxyModel() );
-    trackView()->setPlaylistItemDelegate( delegate );
+    TrackItemDelegate* delegate = new TrackItemDelegate( TrackItemDelegate::LovedTracks, view()->trackView(), view()->trackView()->proxyModel() );
+    view()->trackView()->setPlaylistItemDelegate( delegate );
 
     if ( Pipeline::instance()->isRunning() && SourceList::instance()->isReady() )
     {
@@ -90,7 +92,7 @@ QueueView::restoreState()
 
     if ( !ql.isEmpty() )
     {
-        trackView()->model()->appendQueries( ql );
+        view()->trackView()->model()->appendQueries( ql );
     }
 }
 
@@ -99,7 +101,7 @@ void
 QueueView::saveState()
 {
     QVariantList vl;
-    foreach ( const query_ptr& query, trackView()->model()->queries() )
+    foreach ( const query_ptr& query, view()->trackView()->model()->queries() )
     {
         vl << query->toVariant();
     }

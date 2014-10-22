@@ -27,8 +27,6 @@
 #include <QPainter>
 #include <QToolTip>
 
-#include <boost/concept_check.hpp>
-
 #include "Query.h"
 #include "Result.h"
 #include "Artist.h"
@@ -107,12 +105,7 @@ PlaylistItemDelegate::sizeHint( const QStyleOptionViewItem& option, const QModel
     QSize size = QStyledItemDelegate::sizeHint( option, index );
 
     {
-        if ( m_model->style() == PlayableProxyModel::Short )
-        {
-            int rowHeight = option.fontMetrics.height() + 8;
-            size.setHeight( rowHeight * 2 );
-        }
-        else if ( m_model->style() == PlayableProxyModel::Detailed )
+        if ( m_model->style() == PlayableProxyModel::Detailed )
         {
             int rowHeight = option.fontMetrics.height() * 1.6;
             size.setHeight( rowHeight );
@@ -140,10 +133,6 @@ PlaylistItemDelegate::paint( QPainter* painter, const QStyleOptionViewItem& opti
     {
         case PlayableProxyModel::Detailed:
             paintDetailed( painter, option, index );
-            break;
-
-        case PlayableProxyModel::Short:
-            paintShort( painter, option, index );
             break;
     }
 }
@@ -225,7 +214,7 @@ PlaylistItemDelegate::paintShort( QPainter* painter, const QStyleOptionViewItem&
             elided = fm.elidedText( upperRightText, Qt::ElideRight, remainingSpace );
             painter->drawText( r.adjusted( 0, 1, -remainingSpace, 0 ), upperLeftText, m_topOption );
 
-            if ( item->query()->numResults() > 0 && item->query()->results().first()->isOnline() )
+            if ( item->query()->numResults( true ) > 0 )
                 painter->setPen( opt.palette.text().color().lighter( 220 ) );
 
             painter->drawText( r.adjusted( r.width() - remainingSpace, 1, 0, 0 ), elided, m_topOption );
@@ -477,6 +466,7 @@ PlaylistItemDelegate::drawAvatarsForBox( QPainter* painter,
     painter->restore();
 }
 
+
 void
 PlaylistItemDelegate::drawRichText( QPainter* painter, const QStyleOptionViewItem& option, const QRect& rect, int flags, QTextDocument& text ) const
 {
@@ -507,7 +497,7 @@ PlaylistItemDelegate::drawSourceIcon( QPainter* painter, const QRect& rect, Play
 {
     const int sourceIconSize = rect.height() * height;
     QRect resultRect = rect.adjusted( 0, 0, -( sourceIconSize + 8 ), 0 );
-    if ( item->query()->numResults() == 0 || !item->query()->results().first()->isOnline() )
+    if ( item->query()->numResults( true ) == 0 )
         return resultRect;
 
     const QPixmap sourceIcon = item->query()->results().first()->sourceIcon( TomahawkUtils::RoundedCorners, QSize( sourceIconSize, sourceIconSize ) );
@@ -616,9 +606,10 @@ PlaylistItemDelegate::drawTrack( QPainter* painter, const QStyleOptionViewItem& 
         artistRect.setWidth( artistRect.width() - stateWidth );
     }
 
+    const bool hasOnlineResults = ( item->query()->numResults( true ) > 0 );
     // draw title
     qreal opacityCo = 1.0;
-    if ( item->query()->numResults() == 0 )
+    if ( !hasOnlineResults )
         opacityCo = 0.5;
 
     painter->setOpacity( 1.0 * opacityCo );
@@ -642,8 +633,8 @@ PlaylistItemDelegate::drawTrack( QPainter* painter, const QStyleOptionViewItem& 
     m_artistNameRects[ index ] = painter->fontMetrics().boundingRect( artistRect, Qt::AlignLeft | Qt::AlignVCenter, text );
     painter->restore();
 
-    // draw number
-    if ( ( option.state & QStyle::State_Selected || hoveringOver() == index ) && item->query()->numResults() > 0 )
+    // draw number or source icon
+    if ( ( option.state & QStyle::State_Selected || hoveringOver() == index ) && hasOnlineResults )
     {
         const int iconHeight = numberRect.size().height() / 2;
         const QRect sourceIconRect( numberRect.x(), numberRect.y() + ( numberRect.size().height() - iconHeight ) / 2, iconHeight, iconHeight );
@@ -680,7 +671,7 @@ PlaylistItemDelegate::drawTrack( QPainter* painter, const QStyleOptionViewItem& 
         {
             painter->save();
             painter->setPen( Qt::transparent );
-            painter->setBrush( Qt::darkRed );
+            painter->setBrush( QColor( "#ff004c" ));
 
             QRect playBar = r.adjusted( 0, r.height() + 2, 0, 0 );
             playBar.setHeight( 2 );

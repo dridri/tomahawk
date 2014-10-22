@@ -1,12 +1,3 @@
-/*
-#include <phonon/MediaObject>
-#include <phonon/AudioOutput>
-#include <phonon/AudioDataOutput>
-#include <phonon/BackendCapabilities>
-#include <phonon/Path>
-#include <phonon/Effect>
-#include <phonon/EffectParameter>
-*/
 #include "AudioOutput.h"
 
 #include <stdint.h>
@@ -33,7 +24,6 @@ public:
 
 public slots:
     void onStateChanged( AudioOutput::AudioState newState, AudioOutput::AudioState oldState );
-//    void onAudioDataArrived( QMap< Phonon::AudioDataOutput::Channel, QVector< qint16 > > data );
 
 private:
     QSharedPointer<QIODevice> input;
@@ -49,8 +39,6 @@ private:
     unsigned int timeElapsed;
     bool expectStop;
     bool waitingOnNewTrack;
-
-    mutable QStringList supportedMimeTypes;
 
     AudioState state;
     QQueue< AudioState > stateQueue;

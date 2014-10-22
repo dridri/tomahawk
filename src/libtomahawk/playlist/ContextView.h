@@ -23,14 +23,11 @@
 #include "PlaylistInterface.h"
 #include "DllMacro.h"
 
-class QStackedWidget;
-
+class QVBoxLayout;
 class CaptionLabel;
 class GridView;
 class TrackView;
-class PlayableModel;
-class PlaylistModel;
-class FilterHeader;
+class TrackDetailView;
 
 class DLLEXPORT ContextView : public QWidget, public Tomahawk::ViewPage
 {
@@ -47,22 +44,16 @@ public:
     virtual QString description() const;
     virtual QPixmap pixmap() const;
 
-    virtual bool showInfoBar() const { return false; }
     virtual bool jumpToCurrentTrack();
     virtual bool isTemporaryPage() const;
     virtual bool isBeingPlayed() const;
     void setTemporaryPage( bool b );
 
+    void setTrackView( TrackView* view );
     TrackView* trackView() const { return m_trackView; }
 
     void setCaption( const QString& caption );
-
     void setGuid( const QString& guid );
-
-    void setPlayableModel( PlayableModel* model );
-    void setPlaylistModel( PlaylistModel* model );
-
-    void setPixmap( const QPixmap& pixmap );
     void setEmptyTip( const QString& tip );
 
 public slots:
@@ -73,6 +64,7 @@ signals:
     void closeClicked();
     void destroyed( QWidget* widget );
     void pixmapChanged( const QPixmap& pixmap );
+    void modelChanged();
 
 private slots:
     void onModelChanged();
@@ -82,17 +74,14 @@ private slots:
     void onCoverUpdated();
 
 private:
-    FilterHeader* m_header;
-    QPixmap m_pixmap;
     CaptionLabel* m_captionLabel;
-
     TrackView* m_trackView;
+    TrackDetailView* m_detailView;
 
-    PlayableModel* m_model;
-    QStackedWidget* m_stack;
+    QVBoxLayout* m_innerLayout;
 
+    QPixmap m_pixmap;
     Tomahawk::query_ptr m_query;
-
     bool m_temporary;
 };
 

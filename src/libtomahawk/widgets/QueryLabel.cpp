@@ -95,46 +95,20 @@ QueryLabel::init()
 QString
 QueryLabel::text() const
 {
-    if ( m_result.isNull() && m_query.isNull() && m_artist.isNull() && m_album.isNull() )
+    if ( !m_result && !m_query && !m_artist && !m_album )
         return m_text;
 
-    if ( !m_result.isNull() )
+    if ( m_type & Artist && artist() )
     {
-        if ( m_type & Artist )
-        {
-            return m_result->track()->artist();
-        }
-        if ( m_type & Album && !m_result->track()->album().isEmpty() )
-        {
-            return m_result->track()->album();
-        }
-        if ( m_type & Track )
-        {
-            return m_result->track()->track();
-        }
+        return artist()->name();
     }
-    else if ( !m_query.isNull() )
+    else if ( m_type & Album && album() )
     {
-        if ( m_type & Artist )
-        {
-            return m_query->track()->artist();
-        }
-        if ( m_type & Album && !m_query->track()->album().isEmpty() )
-        {
-            return m_query->track()->album();
-        }
-        if ( m_type & Track )
-        {
-            return m_query->track()->track();
-        }
+        return album()->name();
     }
-    else if ( m_type & Artist && !m_artist.isNull() )
+    else if ( m_type & Track && query() )
     {
-        return m_artist->name();
-    }
-    else if ( m_type & Album && !m_album.isNull() )
-    {
-        return m_album->name();
+        return query()->track()->track();
     }
 
     return QString();
@@ -186,10 +160,10 @@ QueryLabel::onResultChanged()
 void
 QueryLabel::setResult( const Tomahawk::result_ptr& result )
 {
-    if ( result.isNull() )
+    if ( !result )
         return;
 
-    if ( m_result.isNull() || m_result.data() != result.data() )
+    if ( !m_result || m_result.data() != result.data() )
     {
         m_result = result;
         connect( m_result.data(), SIGNAL( updated() ), SLOT( onResultChanged() ) );
@@ -203,10 +177,10 @@ QueryLabel::setResult( const Tomahawk::result_ptr& result )
 void
 QueryLabel::setQuery( const Tomahawk::query_ptr& query )
 {
-    if ( query.isNull() )
+    if ( !query )
         return;
 
-    if ( m_query.isNull() || m_query.data() != query.data() )
+    if ( !m_query || m_query.data() != query.data() )
     {
         m_query = query;
         m_artist = Artist::get( query->track()->artist() );
@@ -428,19 +402,23 @@ QueryLabel::leaveEvent( QEvent* event )
 void
 QueryLabel::startDrag()
 {
-    if ( m_query.isNull() && m_album.isNull() && m_artist.isNull() )
-        return;
-
-    QDrag *drag = new QDrag( this );
+    QDrag* drag = new QDrag( this );
     QByteArray data;
     QDataStream dataStream( &data, QIODevice::WriteOnly );
     QMimeData* mimeData = new QMimeData();
     mimeData->setText( text() );
 
+    bool failed = false;
     switch( m_type )
     {
             case Artist:
             {
+                if ( !artist() )
+                {
+                    failed = true;
+                    break;
+                }
+
                 dataStream << artist()->name();
                 mimeData->setData( "application/tomahawk.metadata.artist", data );
                 drag->setPixmap( TomahawkUtils::createDragPixmap( TomahawkUtils::MediaTypeArtist ) );
@@ -448,6 +426,12 @@ QueryLabel::startDrag()
             }
             case Album:
             {
+                if ( !album() )
+                {
+                    failed = true;
+                    break;
+                }
+
                 dataStream << artist()->name();
                 dataStream << album()->name();
                 mimeData->setData( "application/tomahawk.metadata.album", data );
@@ -457,6 +441,12 @@ QueryLabel::startDrag()
 
             default:
             {
+                if ( !query() )
+                {
+                    failed = true;
+                    break;
+                }
+
                 dataStream << qlonglong( &m_query );
                 mimeData->setData( "application/tomahawk.query.list", data );
                 drag->setPixmap( TomahawkUtils::createDragPixmap( TomahawkUtils::MediaTypeTrack ) );
@@ -464,11 +454,16 @@ QueryLabel::startDrag()
             }
     }
 
-    drag->setMimeData( mimeData );
+    if ( failed )
+    {
+        delete mimeData;
+        delete drag;
+        return;
+    }
 
 //    QPoint hotSpot = event->pos() - child->pos();
 //    drag->setHotSpot( hotSpot );
-
+    drag->setMimeData( mimeData );
     drag->exec( Qt::CopyAction );
 }
 
@@ -479,4 +474,34 @@ QueryLabel::setType( DisplayType type )
     m_type = type;
     updateGeometry();
     update();
+}
+
+
+Tomahawk::artist_ptr
+QueryLabel::artist() const
+{
+    if ( m_artist )
+        return m_artist;
+    else if ( m_album )
+        return m_album->artist();
+    else if ( m_result )
+        return m_result->track()->artistPtr();
+    else if ( m_query )
+        return m_query->track()->artistPtr();
+
+    return artist_ptr();
+}
+
+
+Tomahawk::album_ptr
+QueryLabel::album() const
+{
+    if ( m_album )
+        return m_album;
+    else if ( m_result )
+        return m_result->track()->albumPtr();
+    else if ( m_query )
+        return m_query->track()->albumPtr();
+
+    return album_ptr();
 }

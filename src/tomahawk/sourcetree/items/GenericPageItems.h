@@ -21,8 +21,7 @@
 
 #include "SourceTreeItem.h"
 
-#include "boost/function.hpp"
-#include "boost/bind.hpp"
+#include <functional>
 
 // generic item that has some name, some text, and calls a certain slot when activated. badabing!
 class GenericPageItem : public SourceTreeItem
@@ -30,7 +29,10 @@ class GenericPageItem : public SourceTreeItem
     Q_OBJECT
 public:
     // takes 2 function pointers: show: called when wanting to show the desired view page. get: called to get the view page from ViewManager if it exists
-    GenericPageItem( SourcesModel* model, SourceTreeItem* parent, const QString& text, const QIcon& icon, boost::function<Tomahawk::ViewPage*()> show, boost::function<Tomahawk::ViewPage*()> get );
+    GenericPageItem( SourcesModel* model, SourceTreeItem* parent,
+                     const QString& text, const QIcon& icon,
+                     std::function<Tomahawk::ViewPage*()> show,
+                     std::function<Tomahawk::ViewPage*()> get );
     virtual ~GenericPageItem();
 
     virtual QString text() const;
@@ -45,6 +47,9 @@ public:
     void setText( const QString& text );
     void setSortValue( int value );
 
+public slots:
+    void removeFromList();
+
 signals:
     void activated();
 
@@ -52,8 +57,8 @@ private:
     QIcon m_icon;
     QString m_text;
     int m_sortValue;
-    boost::function< Tomahawk::ViewPage*() > m_show;
-    boost::function< Tomahawk::ViewPage*() > m_get;
+    std::function< Tomahawk::ViewPage*() > m_show;
+    std::function< Tomahawk::ViewPage*() > m_get;
 };
 
 #endif

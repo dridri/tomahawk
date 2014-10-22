@@ -45,10 +45,12 @@ FuzzyIndex::FuzzyIndex( QObject* parent, const QString& filename, bool wipe )
     {
         m_analyzer = newLucene<SimpleAnalyzer>();
         m_luceneDir = FSDirectory::open( m_lucenePath.toStdWString() );
+        m_luceneReader = IndexReader::open( m_luceneDir );
+        m_luceneSearcher = newLucene<IndexSearcher>( m_luceneReader );
     }
     catch ( LuceneException& error )
     {
-        tDebug() << "Caught Lucene error:" << error.what();
+        tDebug() << "Caught Lucene error:" << QString::fromWCharArray( error.getError().c_str() );
         failed = true;
     }
 
@@ -92,27 +94,17 @@ FuzzyIndex::updateIndexSlot()
 void
 FuzzyIndex::beginIndexing()
 {
+    emit indexStarted();
     m_mutex.lock();
 
     try
     {
         tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "Starting indexing:" << m_lucenePath;
-        if ( m_luceneReader )
-        {
-            tDebug( LOGVERBOSE ) << "Deleting old lucene stuff.";
-
-            m_luceneSearcher->close();
-            m_luceneReader->close();
-            m_luceneSearcher.reset();
-            m_luceneReader.reset();
-        }
-
-        tDebug( LOGVERBOSE ) << "Creating new index writer.";
         m_luceneWriter = newLucene<IndexWriter>( m_luceneDir, m_analyzer, true, IndexWriter::MaxFieldLengthLIMITED );
     }
     catch( LuceneException& error )
     {
-        tDebug() << "Caught Lucene error:" << error.what();
+        tDebug() << "Caught Lucene error:" << QString::fromWCharArray( error.getError().c_str() );
         Q_ASSERT( false );
     }
 }
@@ -125,6 +117,9 @@ FuzzyIndex::endIndexing()
     m_luceneWriter->optimize();
     m_luceneWriter->close();
     m_luceneWriter.reset();
+
+    m_luceneReader = IndexReader::open( m_luceneDir );
+    m_luceneSearcher = newLucene<IndexSearcher>( m_luceneReader );
 
     m_mutex.unlock();
     emit indexReady();
@@ -141,13 +136,13 @@ FuzzyIndex::appendFields( const Tomahawk::IndexData& data )
         if ( !data.track.isEmpty() )
         {
             doc->add(newLucene<Field>( L"fulltext", Tomahawk::DatabaseImpl::sortname( QString( "%1 %2" ).arg( data.artist ).arg( data.track ) ).toStdWString(),
-                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED ) );
+                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED_NO_NORMS ) );
 
             doc->add(newLucene<Field>( L"track", Tomahawk::DatabaseImpl::sortname( data.track ).toStdWString(),
-                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED ) );
+                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED_NO_NORMS ) );
 
             doc->add(newLucene<Field>( L"artist", Tomahawk::DatabaseImpl::sortname( data.artist ).toStdWString(),
-                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED ) );
+                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED_NO_NORMS ) );
 
             doc->add(newLucene<Field>( L"artistid", QString::number( data.artistId ).toStdWString(),
                                        Field::STORE_YES, Field::INDEX_NO ) );
@@ -158,7 +153,7 @@ FuzzyIndex::appendFields( const Tomahawk::IndexData& data )
         else if ( !data.album.isEmpty() )
         {
             doc->add(newLucene<Field>( L"album", Tomahawk::DatabaseImpl::sortname( data.album ).toStdWString(),
-                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED ) );
+                                       Field::STORE_NO, Field::INDEX_NOT_ANALYZED_NO_NORMS ) );
 
             doc->add(newLucene<Field>( L"albumid", QString::number( data.id ).toStdWString(),
                                        Field::STORE_YES, Field::INDEX_NO ) );
@@ -170,7 +165,7 @@ FuzzyIndex::appendFields( const Tomahawk::IndexData& data )
     }
     catch( LuceneException& error )
     {
-        tDebug() << "Caught Lucene error:" << error.what();
+        tDebug() << "Caught Lucene error:" << QString::fromWCharArray( error.getError().c_str() );
 
         QTimer::singleShot( 0, this, SLOT( wipeIndex() ) );
     }
@@ -211,31 +206,21 @@ FuzzyIndex::loadLuceneIndex()
 QMap< int, float >
 FuzzyIndex::search( const Tomahawk::query_ptr& query )
 {
-    QMutexLocker lock( &m_mutex );
-
+//    QMutexLocker lock( &m_mutex );
     QMap< int, float > resultsmap;
+    if ( !m_luceneReader || !m_luceneSearcher )
+        return resultsmap;
+
     try
     {
-        if ( !m_luceneReader )
-        {
-            if ( !IndexReader::indexExists( m_luceneDir ) )
-            {
-                tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "index didn't exist.";
-                return resultsmap;
-            }
-
-            m_luceneReader = IndexReader::open( m_luceneDir );
-            m_luceneSearcher = newLucene<IndexSearcher>( m_luceneReader );
-        }
-
-        float minScore;
+//        float minScore = 0.00;
         Collection<String> fields; // = newCollection<String>();
         MultiFieldQueryParserPtr parser = newLucene<MultiFieldQueryParser>( LuceneVersion::LUCENE_CURRENT, fields, m_analyzer );
         BooleanQueryPtr qry = newLucene<BooleanQuery>();
 
         if ( query->isFullTextQuery() )
         {
-            QString q = Tomahawk::DatabaseImpl::sortname( query->fullTextQuery() );
+            const QString q = Tomahawk::DatabaseImpl::sortname( query->fullTextQuery() );
 
             FuzzyQueryPtr fqry = newLucene<FuzzyQuery>( newLucene<Term>( L"track", q.toStdWString() ) );
             qry->add( boost::dynamic_pointer_cast<Query>( fqry ), BooleanClause::SHOULD );
@@ -245,35 +230,31 @@ FuzzyIndex::search( const Tomahawk::query_ptr& query )
 
             FuzzyQueryPtr fqry3 = newLucene<FuzzyQuery>( newLucene<Term>( L"fulltext", q.toStdWString() ) );
             qry->add( boost::dynamic_pointer_cast<Query>( fqry3 ), BooleanClause::SHOULD );
-
-            minScore = 0.00;
         }
         else
         {
-            QString track = Tomahawk::DatabaseImpl::sortname( query->queryTrack()->track() );
-            QString artist = Tomahawk::DatabaseImpl::sortname( query->queryTrack()->artist() );
+            const QString track = Tomahawk::DatabaseImpl::sortname( query->queryTrack()->track() );
+            const QString artist = Tomahawk::DatabaseImpl::sortname( query->queryTrack()->artist() );
             //QString album = Tomahawk::DatabaseImpl::sortname( query->queryTrack()->album() );
 
-            FuzzyQueryPtr fqry = newLucene<FuzzyQuery>( newLucene<Term>( L"track", track.toStdWString() ) );
+            FuzzyQueryPtr fqry = newLucene<FuzzyQuery>( newLucene<Term>( L"track", track.toStdWString() ), 0.5, 3 );
             qry->add( boost::dynamic_pointer_cast<Query>( fqry ), BooleanClause::MUST );
 
-            FuzzyQueryPtr fqry2 = newLucene<FuzzyQuery>( newLucene<Term>( L"artist", artist.toStdWString() ) );
+            FuzzyQueryPtr fqry2 = newLucene<FuzzyQuery>( newLucene<Term>( L"artist", artist.toStdWString() ), 0.5, 3 );
             qry->add( boost::dynamic_pointer_cast<Query>( fqry2 ), BooleanClause::MUST );
-
-            minScore = 0.00;
         }
 
-        TopScoreDocCollectorPtr collector = TopScoreDocCollector::create( 50, false );
+        TopScoreDocCollectorPtr collector = TopScoreDocCollector::create( 20, true );
         m_luceneSearcher->search( qry, collector );
         Collection<ScoreDocPtr> hits = collector->topDocs()->scoreDocs;
 
-        for ( int i = 0; i < collector->getTotalHits() && i < 50; i++ )
+        for ( int i = 0; i < collector->getTotalHits() && i < 20; i++ )
         {
             DocumentPtr d = m_luceneSearcher->doc( hits[i]->doc );
-            float score = hits[i]->score;
-            int id = QString::fromStdWString( d->get( L"trackid" ) ).toInt();
+            const float score = hits[i]->score;
+            const int id = QString::fromStdWString( d->get( L"trackid" ) ).toInt();
 
-            if ( score > minScore )
+//            if ( score > minScore )
             {
                 resultsmap.insert( id, score );
 //                tDebug() << "Index hit:" << id << score << QString::fromWCharArray( ((Query*)qry)->toString() );
@@ -282,9 +263,7 @@ FuzzyIndex::search( const Tomahawk::query_ptr& query )
     }
     catch( LuceneException& error )
     {
-        tDebug() << "Caught Lucene error:" << error.what() << query->toString();
-
-        QTimer::singleShot( 0, this, SLOT( wipeIndex() ) );
+        tDebug() << "Caught Lucene error:" << QString::fromWCharArray( error.getError().c_str() ) << query->toString();
     }
 
     return resultsmap;
@@ -296,25 +275,15 @@ FuzzyIndex::searchAlbum( const Tomahawk::query_ptr& query )
 {
     Q_ASSERT( query->isFullTextQuery() );
 
-    QMutexLocker lock( &m_mutex );
-
+//    QMutexLocker lock( &m_mutex );
     QMap< int, float > resultsmap;
+    if ( !m_luceneReader || !m_luceneSearcher )
+        return resultsmap;
+
     try
     {
-        if ( !m_luceneReader )
-        {
-            if ( !IndexReader::indexExists( m_luceneDir ) )
-            {
-                tDebug( LOGVERBOSE ) << Q_FUNC_INFO << "index didn't exist.";
-                return resultsmap;
-            }
-
-            m_luceneReader = IndexReader::open( m_luceneDir );
-            m_luceneSearcher = newLucene<IndexSearcher>( m_luceneReader );
-        }
-
         QueryParserPtr parser = newLucene<QueryParser>( LuceneVersion::LUCENE_CURRENT, L"album", m_analyzer );
-        QString q = Tomahawk::DatabaseImpl::sortname( query->fullTextQuery() );
+        const QString q = Tomahawk::DatabaseImpl::sortname( query->fullTextQuery() );
 
         FuzzyQueryPtr qry = newLucene<FuzzyQuery>( newLucene<Term>( L"album", q.toStdWString() ) );
         TopScoreDocCollectorPtr collector = TopScoreDocCollector::create( 99999, false );
@@ -336,9 +305,7 @@ FuzzyIndex::searchAlbum( const Tomahawk::query_ptr& query )
     }
     catch( LuceneException& error )
     {
-        tDebug() << "Caught Lucene error:" << error.what();
-
-        QTimer::singleShot( 0, this, SLOT( wipeIndex() ) );
+        tDebug() << "Caught Lucene error:" << QString::fromWCharArray( error.getError().c_str() );
     }
 
     return resultsmap;

@@ -27,10 +27,19 @@
 static QString s_aeInfoIdentifier = QString( "MEDIASTREAM" );
 
 
+<<<<<<< HEAD
 MediaStream::MediaStream()
     : m_type( Unknown )
     , m_url( QUrl() )
     , m_ioDevice ( 0 )
+=======
+MediaStream::MediaStream( QObject* parent )
+    : QObject( parent )
+    , m_type( Unknown )
+    , m_ioDevice ( nullptr )
+    , m_started( false )
+    , m_bufferingFinished( false )
+>>>>>>> upstream/libvlc
     , m_eos( false )
     , m_pos( 0 )
     , m_streamSize( 0 )
@@ -40,20 +49,49 @@ MediaStream::MediaStream()
 
 
 MediaStream::MediaStream( const QUrl &url )
+<<<<<<< HEAD
     : m_type(Url)
 {
     tDebug() << Q_FUNC_INFO;
 
     m_url = url;
+=======
+    : QObject( 0 )
+    , m_type( Url )
+    , m_url( url )
+    , m_ioDevice ( nullptr )
+    , m_started( false )
+    , m_bufferingFinished( false )
+    , m_eos( false )
+    , m_pos( 0 )
+    , m_streamSize( 0 )
+{
+    tDebug() << Q_FUNC_INFO;
+>>>>>>> upstream/libvlc
 }
 
 
 MediaStream::MediaStream( QIODevice* device )
+<<<<<<< HEAD
     : m_type(IODevice)
 {
     tDebug() << Q_FUNC_INFO;
 
     m_ioDevice = device;
+=======
+    : QObject( 0 )
+    , m_type( IODevice )
+    , m_ioDevice ( device )
+    , m_started( false )
+    , m_bufferingFinished( false )
+    , m_eos( false )
+    , m_pos( 0 )
+    , m_streamSize( 0 )
+{
+    tDebug() << Q_FUNC_INFO;
+
+    QObject::connect( m_ioDevice, SIGNAL( readChannelFinished() ), this, SLOT( bufferingFinished() ) );
+>>>>>>> upstream/libvlc
 }
 
 
@@ -106,23 +144,43 @@ MediaStream::endOfData()
 }
 
 
+<<<<<<< HEAD
 int
 MediaStream::readCallback ( void* data, const char* cookie, int64_t* dts, int64_t* pts, unsigned* flags, size_t* bufferSize, void** buffer )
 {
 //    tDebug() << Q_FUNC_INFO;
 
+=======
+void MediaStream::bufferingFinished()
+{
+    tDebug() << Q_FUNC_INFO;
+
+    m_bufferingFinished = true;
+}
+
+
+int
+MediaStream::readCallback ( void* data, const char* cookie, int64_t* dts, int64_t* pts, unsigned* flags, size_t* bufferSize, void** buffer )
+{
+>>>>>>> upstream/libvlc
     Q_UNUSED(cookie);
     Q_UNUSED(dts);
     Q_UNUSED(pts);
     Q_UNUSED(flags);
 
     MediaStream* that = static_cast < MediaStream * > ( data );
+<<<<<<< HEAD
+=======
+    qint64 bufsize = 0;
+    *bufferSize = 0;
+>>>>>>> upstream/libvlc
 
     if ( that->m_eos == true ) {
         return -1;
     }
 
     if ( that->m_type == Stream ) {
+<<<<<<< HEAD
         *bufferSize = that->needData(buffer);
     }
     else if ( that->m_type == IODevice ) {
@@ -132,6 +190,28 @@ MediaStream::readCallback ( void* data, const char* cookie, int64_t* dts, int64_
         *bufferSize = data.size();
     }
 
+=======
+        bufsize = that->needData(buffer);
+    }
+    else if ( that->m_type == IODevice ) {
+        bufsize = that->m_ioDevice->read( that->m_buffer, BLOCK_SIZE );
+        *buffer = that->m_buffer;
+    }
+
+    if ( bufsize > 0 ) {
+        that->m_started = true;
+    }
+    if ( that->m_type == IODevice && bufsize == 0 && that->m_started && that->m_bufferingFinished == true ) {
+        that->m_eos = true;
+        return -1;
+    }
+    if ( bufsize < 0 ) {
+        that->m_eos = true;
+        return -1;
+    }
+
+    *bufferSize = bufsize;
+>>>>>>> upstream/libvlc
     return 0;
 }
 
@@ -139,17 +219,25 @@ MediaStream::readCallback ( void* data, const char* cookie, int64_t* dts, int64_
 int
 MediaStream::readDoneCallback ( void *data, const char *cookie, size_t bufferSize, void *buffer )
 {
+<<<<<<< HEAD
 //    tDebug() << Q_FUNC_INFO;
 
+=======
+>>>>>>> upstream/libvlc
     Q_UNUSED(cookie);
     Q_UNUSED(bufferSize);
 
     MediaStream* that = static_cast < MediaStream * > ( data );
 
+<<<<<<< HEAD
     if ( ( that->m_type == Stream || that->m_type == IODevice ) && buffer != 0 && bufferSize > 0 ) {
 //      TODO : causes segfault
         tDebug() << "buffer : " << buffer;
         delete static_cast<char *>(buffer);
+=======
+    if ( ( that->m_type == Stream ) && buffer != 0 && bufferSize > 0 ) {
+        delete static_cast< char* >( buffer );
+>>>>>>> upstream/libvlc
     }
 
     return 0;
@@ -159,14 +247,21 @@ MediaStream::readDoneCallback ( void *data, const char *cookie, size_t bufferSiz
 int
 MediaStream::seekCallback ( void *data, const uint64_t pos )
 {
+<<<<<<< HEAD
 //    tDebug() << Q_FUNC_INFO;
 
+=======
+>>>>>>> upstream/libvlc
     MediaStream* that = static_cast < MediaStream * > ( data );
 
     if ( that->m_type == Stream && static_cast < int64_t > ( pos ) > that->streamSize() ) {
         return -1;
     }
 
+<<<<<<< HEAD
+=======
+    that->m_started = false;
+>>>>>>> upstream/libvlc
     that->m_pos = pos;
     if ( that->m_type == IODevice ) {
         that->m_ioDevice->seek(pos);

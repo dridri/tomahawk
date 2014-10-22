@@ -31,7 +31,6 @@ class PlayableModel;
 class QSortFilterProxyModel;
 class QStandardItemModel;
 class QStandardItem;
-class TreeModel;
 
 namespace Ui
 {
@@ -41,7 +40,6 @@ namespace Ui
 namespace Tomahawk
 {
     class ChartDataLoader;
-    class ChartsPlaylistInterface;
 }
 
 namespace Tomahawk
@@ -114,7 +112,6 @@ private:
 
     AnimatedSpinner* m_spinner;
     bool m_loading;
-    friend class Tomahawk::ChartsPlaylistInterface;
 };
 
 const QString CHARTS_VIEWPAGE_NAME = "charts";
@@ -136,8 +133,6 @@ public:
     const QString pixmapPath() const Q_DECL_OVERRIDE { return ( RESPATH "images/charts.svg" ); }
 
     int sortValue() Q_DECL_OVERRIDE { return 5; }
-
-    bool showInfoBar() const Q_DECL_OVERRIDE { return false; }
 };
 
 

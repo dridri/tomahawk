@@ -1,6 +1,6 @@
 /* === This file is part of Tomahawk Player - <http://tomahawk-player.org> ===
  *
- *   Copyright 2010-2011, Christian Muehlhaeuser <muesli@tomahawk-player.org>
+ *   Copyright 2010-2014, Christian Muehlhaeuser <muesli@tomahawk-player.org>
  *   Copyright 2013,      Teo Mrnjavac <teo@kde.org>
  *
  *   Tomahawk is free software: you can redistribute it and/or modify
@@ -20,7 +20,9 @@
 #include "ContextMenu.h"
 
 #include "audio/AudioEngine.h"
-#include "playlist/PlaylistView.h"
+#include "playlist/ContextView.h"
+#include "playlist/TrackView.h"
+#include "playlist/PlayableModel.h"
 #include "filemetadata/MetadataEditor.h"
 #include "GlobalActionManager.h"
 #include "ViewManager.h"
@@ -194,7 +196,7 @@ ContextMenu::setQueries( const QList<Tomahawk::query_ptr>& queries )
         // Ampersands need to be escaped as they indicate a keyboard shortcut
         const QString track = m_queries.first()->track()->track().replace( QString( "&" ), QString( "&&" ) );
         m_sigmap->setMapping( addAction( ImageRegistry::instance()->icon( RESPATH "images/track-icon.svg" ),
-                                         tr( "&Go to \"%1\"" ).arg( track ) ), ActionTrackPage );
+                                         tr( "View Similar Tracks to \"%1\"" ).arg( track ) ), ActionTrackPage );
         if ( !m_queries.first()->track()->album().isEmpty() )
         {
             const QString album = m_queries.first()->track()->album().replace( QString( "&" ), QString( "&&" ) );
@@ -401,15 +403,15 @@ ContextMenu::addToQueue()
 {
     foreach ( const query_ptr& query, m_queries )
     {
-        ViewManager::instance()->queue()->trackView()->model()->appendQuery( query );
+        ViewManager::instance()->queue()->view()->trackView()->model()->appendQuery( query );
     }
     foreach ( const artist_ptr& artist, m_artists )
     {
-        ViewManager::instance()->queue()->trackView()->model()->appendArtist( artist );
+        ViewManager::instance()->queue()->view()->trackView()->model()->appendArtist( artist );
     }
     foreach ( const album_ptr& album, m_albums )
     {
-        ViewManager::instance()->queue()->trackView()->model()->appendAlbum( album );
+        ViewManager::instance()->queue()->view()->trackView()->model()->appendAlbum( album );
     }
 }
 

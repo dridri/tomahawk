@@ -77,7 +77,7 @@ private slots:
     void onResultsChanged();
 
 private:
-    void init( PlayableItem* parent, int row = -1 );
+    void init( int row = -1 );
 
     Tomahawk::artist_ptr m_artist;
     Tomahawk::album_ptr m_album;
@@ -87,8 +87,8 @@ private:
     Tomahawk::source_ptr m_source;
 
     PlayableItem* m_parent;
-    bool m_fetchingMore;
-    bool m_isPlaying;
+    bool m_fetchingMore = false;
+    bool m_isPlaying = false;
 
     Tomahawk::PlaybackLog m_playbackLog;
 };

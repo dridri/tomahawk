@@ -241,6 +241,8 @@ void
 Query::refreshResults()
 {
     Q_D( Query );
+
+    clearResults();
     if ( d->resolveFinished && d->allowReresolve )
     {
         d->resolveFinished = false;
@@ -288,6 +290,25 @@ Query::removeResult( const Tomahawk::result_ptr& result )
 
 
 void
+Query::clearResults()
+{
+    Q_D( Query );
+
+    d->solved = false;
+    d->playable = false;
+
+    {
+        QMutexLocker lock( &d->mutex );
+        d->results.clear();
+    }
+
+    emit playableStateChanged( false );
+    emit solvedStateChanged( false );
+    emit resultsChanged();
+}
+
+
+void
 Query::onResolvingFinished()
 {
     Q_D( Query );
@@ -322,10 +343,23 @@ Query::results() const
 
 
 unsigned int
-Query::numResults() const
+Query::numResults( bool onlyPlayableResults ) const
 {
     Q_D( const Query );
     QMutexLocker lock( &d->mutex );
+
+    if ( onlyPlayableResults )
+    {
+        unsigned int c = 0;
+        foreach ( const result_ptr& result, d->results )
+        {
+            if ( result->isOnline() )
+                c++;
+        }
+
+        return c;
+    }
+
     return d->results.length();
 }
 
@@ -466,16 +500,6 @@ Query::disallowReresolve()
 
 
 void
-Query::clearResults()
-{
-    foreach( const result_ptr& rp, results() )
-    {
-        removeResult( rp );
-    }
-}
-
-
-void
 Query::checkResults()
 {
     Q_D( Query );
@@ -505,15 +529,18 @@ Query::checkResults()
     {
         refreshResults();
     }
-    if ( d->playable != playable )
+    else
     {
-        d->playable = playable;
-        emit playableStateChanged( d->playable );
-    }
-    if ( d->solved != solved )
-    {
-        d->solved = solved;
-        emit solvedStateChanged( d->solved );
+        if ( d->playable != playable )
+        {
+            d->playable = playable;
+            emit playableStateChanged( d->playable );
+        }
+        if ( d->solved != solved )
+        {
+            d->solved = solved;
+            emit solvedStateChanged( d->solved );
+        }
     }
 }
 

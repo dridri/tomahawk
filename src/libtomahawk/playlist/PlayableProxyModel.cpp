@@ -48,7 +48,7 @@ PlayableProxyModel::PlayableProxyModel( QObject* parent )
 
     PlayableProxyModel::setSourcePlayableModel( NULL );
 
-    m_headerStyle[ Large ]      << PlayableModel::Name;
+    m_headerStyle[ Fancy ]      << PlayableModel::Name;
     m_headerStyle[ Detailed ]   << PlayableModel::Artist << PlayableModel::Track << PlayableModel::Composer << PlayableModel::Album << PlayableModel::AlbumPos << PlayableModel::Duration << PlayableModel::Bitrate << PlayableModel::Age << PlayableModel::Year << PlayableModel::Filesize << PlayableModel::Origin << PlayableModel::Score;
     m_headerStyle[ Collection ] << PlayableModel::Name << PlayableModel::Composer << PlayableModel::Duration << PlayableModel::Bitrate << PlayableModel::Age << PlayableModel::Year << PlayableModel::Filesize << PlayableModel::Origin;
 }
@@ -90,6 +90,7 @@ PlayableProxyModel::isLoading() const
 
     return false;
 }
+
 
 QPersistentModelIndex
 PlayableProxyModel::currentIndex() const
@@ -145,27 +146,33 @@ PlayableProxyModel::setSourcePlayableModel( PlayableModel* sourceModel )
 bool
 PlayableProxyModel::filterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const
 {
-    bool dupeFilter = true;
-    bool visibilityFilter = true;
-
-    if ( m_hideDupeItems )
-        dupeFilter = dupeFilterAcceptsRow( sourceRow, sourceParent );
-    if ( m_maxVisibleItems > 0 )
-        visibilityFilter = visibilityFilterAcceptsRow( sourceRow, sourceParent );
-
-    return ( dupeFilter && visibilityFilter && nameFilterAcceptsRow( sourceRow, sourceParent ) );
-}
-
-
-bool
-PlayableProxyModel::dupeFilterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const
-{
-    if ( !m_hideDupeItems )
-        return true;
+    PlayableProxyModelFilterMemo memo;
 
     PlayableItem* pi = itemFromIndex( sourceModel()->index( sourceRow, 0, sourceParent ) );
     if ( !pi )
         return false;
+
+    return filterAcceptsRowInternal( sourceRow, pi, sourceParent, memo );
+}
+
+
+bool
+PlayableProxyModel::filterAcceptsRowInternal( int sourceRow, PlayableItem* pi, const QModelIndex& sourceParent, PlayableProxyModelFilterMemo& memo ) const
+{
+    if ( m_maxVisibleItems > 0 && !visibilityFilterAcceptsRow( sourceRow, sourceParent, memo ) )
+        return false;
+    if ( m_hideDupeItems && !dupeFilterAcceptsRow( sourceRow, pi, sourceParent, memo ) )
+        return false;
+
+    return nameFilterAcceptsRow( sourceRow, pi, sourceParent );
+}
+
+
+bool
+PlayableProxyModel::dupeFilterAcceptsRow( int sourceRow, PlayableItem* pi, const QModelIndex& sourceParent, PlayableProxyModelFilterMemo& memo ) const
+{
+    if ( !m_hideDupeItems )
+        return true;
 
     for ( int i = 0; i < sourceRow; i++ )
     {
@@ -177,7 +184,7 @@ PlayableProxyModel::dupeFilterAcceptsRow( int sourceRow, const QModelIndex& sour
                  ( pi->album() && pi->album() == di->album() ) ||
                  ( pi->artist() && pi->artist()->name() == di->artist()->name() );
 
-        if ( b && filterAcceptsRow( i, sourceParent ) )
+        if ( b && filterAcceptsRowInternal( i, di, sourceParent, memo ) )
             return false;
     }
 
@@ -186,17 +193,27 @@ PlayableProxyModel::dupeFilterAcceptsRow( int sourceRow, const QModelIndex& sour
 
 
 bool
-PlayableProxyModel::visibilityFilterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const
+PlayableProxyModel::visibilityFilterAcceptsRow( int sourceRow, const QModelIndex& sourceParent, PlayableProxyModelFilterMemo& memo ) const
 {
     if ( m_maxVisibleItems <= 0 )
         return true;
 
-    int items = 0;
-    for ( int i = 0; i < sourceRow; i++ )
+    if ( static_cast<size_t>( sourceRow ) < memo.visibilty.size() )
     {
-        if ( dupeFilterAcceptsRow( i, sourceParent ) && nameFilterAcceptsRow( i, sourceParent ) )
+        // We have already memoized the return value.
+        return memo.visibilty[sourceRow] < m_maxVisibleItems;
+    }
+    // else: We do not have memoized the value, so compute it.
+
+    int items = memo.visibilty.back();
+    for ( int i = memo.visibilty.size() - 1; ( i < sourceRow ) && ( items < m_maxVisibleItems ) ; i++ )
+    {
+        PlayableItem* pi = itemFromIndex( sourceModel()->index( i, 0, sourceParent ) );
+        // We will not change memo in these calls as all values needed in them are already memoized.
+        if ( pi && dupeFilterAcceptsRow( i, pi, sourceParent, memo ) && nameFilterAcceptsRow( i, pi, sourceParent ) )
         {
             items++;
+            memo.visibilty.push_back( items ); // Sets memo.visibilty[i + 1] to items
         }
     }
 
@@ -205,12 +222,8 @@ PlayableProxyModel::visibilityFilterAcceptsRow( int sourceRow, const QModelIndex
 
 
 bool
-PlayableProxyModel::nameFilterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const
+PlayableProxyModel::nameFilterAcceptsRow( int sourceRow, PlayableItem* pi, const QModelIndex& sourceParent ) const
 {
-    PlayableItem* pi = itemFromIndex( sourceModel()->index( sourceRow, 0, sourceParent ) );
-    if ( !pi )
-        return false;
-
     if ( m_hideEmptyParents && pi->source() )
     {
         if ( !sourceModel()->rowCount( sourceModel()->index( sourceRow, 0, sourceParent ) ) )
@@ -219,25 +232,27 @@ PlayableProxyModel::nameFilterAcceptsRow( int sourceRow, const QModelIndex& sour
         }
     }
 
-    if ( pi->query() )
+    const Tomahawk::query_ptr& query = pi->query();
+    if ( query )
     {
         Tomahawk::result_ptr r;
-        if ( pi->query()->numResults() )
-            r = pi->query()->results().first();
+        if ( query->numResults() )
+            r = query->results().first();
 
         if ( !m_showOfflineResults && ( r.isNull() || !r->isOnline() ) )
             return false;
 
-        if ( filterRegExp().isEmpty() )
+        const QRegExp regexp = filterRegExp();
+        if ( regexp.isEmpty() )
             return true;
 
-        QStringList sl = filterRegExp().pattern().split( " ", QString::SkipEmptyParts );
-        foreach( QString s, sl )
+        QStringList sl = regexp.pattern().split( " ", QString::SkipEmptyParts );
+        foreach( const QString& s, sl )
         {
-            s = s.toLower();
-            if ( !pi->query()->track()->artist().toLower().contains( s ) &&
-                 !pi->query()->track()->album().toLower().contains( s ) &&
-                 !pi->query()->track()->track().toLower().contains( s ) )
+            const Tomahawk::track_ptr& track = query->track();
+            if ( !track->artist().contains( s, Qt::CaseInsensitive ) &&
+                 !track->album().contains( s, Qt::CaseInsensitive ) &&
+                 !track->track().contains( s, Qt::CaseInsensitive ) )
             {
                 return false;
             }
@@ -249,33 +264,32 @@ PlayableProxyModel::nameFilterAcceptsRow( int sourceRow, const QModelIndex& sour
     {
         QStringList sl = filterRegExp().pattern().split( " ", QString::SkipEmptyParts );
 
-        bool found = true;
         foreach( const QString& s, sl )
         {
-            if ( !al->name().contains( s, Qt::CaseInsensitive ) && !al->artist()->name().contains( s, Qt::CaseInsensitive ) )
+            if ( !al->name().contains( s, Qt::CaseInsensitive ) &&
+                 !al->artist()->name().contains( s, Qt::CaseInsensitive ) )
             {
-                found = false;
+                return false;
             }
         }
 
-        return found;
+        return true;
     }
 
-    const Tomahawk::album_ptr& ar = pi->album();
+    const Tomahawk::artist_ptr& ar = pi->artist();
     if ( ar )
     {
         QStringList sl = filterRegExp().pattern().split( " ", QString::SkipEmptyParts );
 
-        bool found = true;
         foreach( const QString& s, sl )
         {
-            if ( !ar->name().contains( s, Qt::CaseInsensitive ) && !ar->artist()->name().contains( s, Qt::CaseInsensitive ) )
+            if ( !ar->name().contains( s, Qt::CaseInsensitive ) )
             {
-                found = false;
+                return false;
             }
         }
 
-        return found;
+        return true;
     }
 
     return true;
@@ -579,8 +593,7 @@ PlayableProxyModel::columnCount( const QModelIndex& parent ) const
 
     switch ( m_style )
     {
-        case Short:
-        case Large:
+        case Fancy:
             return 1;
             break;
 
@@ -642,8 +655,7 @@ PlayableProxyModel::columnWeights() const
 
     switch ( m_style )
     {
-        case Short:
-        case Large:
+        case Fancy:
             w << 1.0;
             break;
 
@@ -678,7 +690,7 @@ PlayableProxyModel::updateDetailedInfo( const QModelIndex& index )
     {
         item->query()->track()->cover( QSize( 0, 0 ) );
 
-        if ( style() == PlayableProxyModel::Large )
+        if ( style() == PlayableProxyModel::Fancy )
         {
             item->query()->track()->loadSocialActions();
         }

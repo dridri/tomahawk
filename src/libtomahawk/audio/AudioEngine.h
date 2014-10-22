@@ -24,6 +24,7 @@
 #include "../Typedefs.h"
 
 #include <QStringList>
+#include <functional>
 
 #include "DllMacro.h"
 
@@ -109,16 +110,13 @@ public:
      */
     qint64 currentTrackTotalTime() const;
 
-    void setDspCallback( void ( *cb ) ( signed short* samples, int nb_channels, int nb_samples ) );
+    void setDspCallback( std::function< void( int state, int frameNumber, float* samples, int nb_channels, int nb_samples ) > cb );
 
 public slots:
     void playPause();
     void play();
     void pause();
     void stop( AudioErrorCode errorCode = NoError );
-
-    bool activateDataOutput();
-    bool deactivateDataOutput();
 
     void previous();
     void next();

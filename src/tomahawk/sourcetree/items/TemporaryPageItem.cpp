@@ -21,10 +21,10 @@
 
 #include "GlobalActionManager.h"
 #include "ViewManager.h"
-#include "widgets/infowidgets/AlbumInfoWidget.h"
-#include "widgets/infowidgets/ArtistInfoWidget.h"
-#include "widgets/infowidgets/TrackInfoWidget.h"
-#include "widgets/SearchWidget.h"
+#include "viewpages/AlbumViewPage.h"
+#include "viewpages/ArtistViewPage.h"
+#include "viewpages/TrackViewPage.h"
+#include "viewpages/SearchViewPage.h"
 #include "utils/ImageRegistry.h"
 #include "utils/Closure.h"
 #include "utils/Logger.h"
@@ -79,12 +79,6 @@ TemporaryPageItem::TemporaryPageItem( SourcesModel* mdl, SourceTreeItem* parent,
     {
         m_customActions << action;
         NewClosure( action, SIGNAL( triggered() ), this, SLOT( linkActionTriggered( QAction* ) ), action );
-    }
-
-    if ( QObject* obj = dynamic_cast< QObject* >( page ) )
-    {
-        if ( obj->metaObject()->indexOfSignal( "destroyed(QObject*)" ) > -1 )
-            connect( obj, SIGNAL( destroyed( QObject* ) ), SLOT( pageDestroyed() ) );
     }
 
     model()->linkSourceItemToPage( this, page );

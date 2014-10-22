@@ -43,8 +43,6 @@
 
 #include <QDir>
 
-#include <boost/bind.hpp>
-
 using namespace Tomahawk;
 
 #define AUDIO_VOLUME_STEP 5
@@ -77,9 +75,7 @@ AudioEnginePrivate::onStateChanged( AudioOutput::AudioState newState, AudioOutpu
     if ( newState == AudioOutput::Error )
     {
         q_ptr->stop( AudioEngine::UnknownError );
-
-//TODO        tDebug() << "Phonon Error:" << audioOutput->errorString() << audioOutput->errorType();
-
+        tDebug() << "AudioOutput Error";
         emit q_ptr->error( AudioEngine::UnknownError );
         q_ptr->setState( AudioEngine::Error );
     }
@@ -99,7 +95,6 @@ AudioEnginePrivate::onStateChanged( AudioOutput::AudioState newState, AudioOutpu
     }
     if ( newState == AudioOutput::Stopped && oldState == AudioOutput::Paused )
     {
-        // GStreamer backend hack: instead of going from PlayingState to StoppedState, it traverses PausedState
         q_ptr->setState( AudioEngine::Stopped );
     }
 
@@ -160,13 +155,6 @@ AudioEnginePrivate::onStateChanged( AudioOutput::AudioState newState, AudioOutpu
     }
 }
 
-/*
-void
-AudioEnginePrivate::onAudioDataArrived( QMap<Phonon::AudioDataOutput::Channel, QVector<qint16> > data )
-{
-}
-*/
-
 AudioEngine* AudioEnginePrivate::s_instance = 0;
 
 
@@ -198,6 +186,8 @@ AudioEngine::AudioEngine()
     connect( d->audioOutput, SIGNAL( tick( qint64 ) ), SLOT( timerTriggered( qint64 ) ) );
     connect( d->audioOutput, SIGNAL( aboutToFinish() ), SLOT( onAboutToFinish() ) );
 
+    setVolume( TomahawkSettings::instance()->volume() );
+
     qRegisterMetaType< AudioErrorCode >("AudioErrorCode");
     qRegisterMetaType< AudioState >("AudioState");
 }
@@ -209,21 +199,7 @@ AudioEngine::~AudioEngine()
 
     TomahawkSettings::instance()->setVolume( volume() );
 
-
     delete d_ptr;
-}
-
-
-QStringList
-AudioEngine::supportedMimeTypes() const
-{
-    if ( d_func()->supportedMimeTypes.isEmpty() )
-    {
-        d_func()->supportedMimeTypes << "audio/*";
-        d_func()->supportedMimeTypes << "audio/basic";
-    }
-
-    return d_func()->supportedMimeTypes;
 }
 
 
@@ -337,22 +313,6 @@ AudioEngine::stop( AudioErrorCode errorCode )
 }
 
 
-bool AudioEngine::activateDataOutput()
-{
-    Q_D( AudioEngine );
-
-    return true;
-
-}
-
-
-bool AudioEngine::deactivateDataOutput()
-{
-    Q_D( AudioEngine );
-
-    return true;
-}
-
 void
 AudioEngine::previous()
 {
@@ -439,10 +399,11 @@ bool
 AudioEngine::canSeek()
 {
     Q_D( AudioEngine );
-/*
-    if ( d->playlist.isNull() )
-        return true;
-*/
+
+    if ( !d->audioOutput->isSeekable() ) {
+        return false;
+    }
+
     return !d->playlist.isNull() && ( d->playlist.data()->seekRestrictions() != PlaylistModes::NoSeek );
 }
 
@@ -452,11 +413,11 @@ AudioEngine::seek( qint64 ms )
 {
     Q_D( AudioEngine );
 
-    if ( !canSeek() )
+    /*if ( !canSeek() )
     {
         tDebug( LOGEXTRA ) << "Could not seek!";
         return;
-    }
+    }*/
 
     if ( isPlaying() || isPaused() )
     {
@@ -654,8 +615,10 @@ AudioEngine::performLoadIODevice( const result_ptr& result, const QString& url )
     if ( !TomahawkUtils::isLocalResult( url ) && !TomahawkUtils::isHttpResult( url )
          && !TomahawkUtils::isRtmpResult( url ) )
     {
-        boost::function< void ( const QString, QSharedPointer< QIODevice > ) > callback =
-                boost::bind( &AudioEngine::performLoadTrack, this, result, _1, _2 );
+        std::function< void ( const QString, QSharedPointer< QIODevice > ) > callback =
+                std::bind( &AudioEngine::performLoadTrack, this, result,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
         Tomahawk::UrlHandler::getIODeviceForUrl( result, url, callback );
     }
     else
@@ -710,7 +673,6 @@ AudioEngine::performLoadTrack( const Tomahawk::result_ptr result, const QString 
                 QSharedPointer<QNetworkReply> qnr = io.objectCast<QNetworkReply>();
                 if ( !qnr.isNull() )
                 {
-                    tLog() << "CASE 1";
                     d->audioOutput->setCurrentSource( new QNR_IODeviceStream( qnr, this ) );
                     // We keep track of the QNetworkReply in QNR_IODeviceStream
                     // and Phonon handles the deletion of the
@@ -720,7 +682,6 @@ AudioEngine::performLoadTrack( const Tomahawk::result_ptr result, const QString 
                 }
                 else
                 {
-                    tLog() << "CASE 2";
                     d->audioOutput->setCurrentSource( io.data() );
                     // We handle the deletion via tracking in d->input
                     d->audioOutput->setAutoDelete( false );
@@ -734,7 +695,6 @@ AudioEngine::performLoadTrack( const Tomahawk::result_ptr result, const QString 
                  */
                 if ( !TomahawkUtils::isLocalResult( url ) )
                 {
-                    tLog() << "CASE 3";
                     QUrl furl = url;
                     if ( url.contains( "?" ) )
                     {
@@ -747,7 +707,6 @@ AudioEngine::performLoadTrack( const Tomahawk::result_ptr result, const QString 
                 }
                 else
                 {
-                    tLog() << "CASE 4";
                     QString furl = url;
                     if ( furl.startsWith( "file://" ) )
                         furl = furl.right( furl.length() - 7 );
@@ -883,7 +842,6 @@ AudioEngine::play( const QUrl& url )
 {
     tDebug() << Q_FUNC_INFO << url;
 
-    result_ptr result = Result::get( url.toString() );
     const QVariantMap tags = MusicScanner::readTags( QFileInfo( url.toLocalFile() ) ).toMap();
 
     track_ptr t;
@@ -892,19 +850,22 @@ AudioEngine::play( const QUrl& url )
         t = Track::get( tags["artist"].toString(), tags["track"].toString(), tags["album"].toString(),
                         tags["duration"].toInt(), tags["composer"].toString(),
                         tags["albumpos"].toUInt(), tags["discnumber"].toUInt() );
-
-        result->setSize( tags["size"].toUInt() );
-        result->setBitrate( tags["bitrate"].toUInt() );
-        result->setModificationTime( tags["mtime"].toUInt() );
-        result->setMimetype( tags["mimetype"].toString() );
     }
     else
     {
         t = Tomahawk::Track::get( "Unknown Artist", "Unknown Track" );
     }
 
+    result_ptr result = Result::get( url.toString(), t );
 
-    result->setTrack( t );
+    if ( !tags.isEmpty() )
+    {
+        result->setSize( tags["size"].toUInt() );
+        result->setBitrate( tags["bitrate"].toUInt() );
+        result->setModificationTime( tags["mtime"].toUInt() );
+        result->setMimetype( tags["mimetype"].toString() );
+    }
+
     result->setScore( 1.0 );
     result->setCollection( SourceList::instance()->getLocal()->collections().first(), false );
 
@@ -1243,14 +1204,16 @@ AudioEngine::currentTime() const
 qint64
 AudioEngine::currentTrackTotalTime() const
 {
-    // TODO : This is too hacky. The problem is that I don't know why
-    //        libVLC doesn't report total duration for stream data (imem://)
-    // But it's not a real problem for playback, since
-    // EndOfStream is emitted by libVLC itself
-    if ( d_func()->audioOutput->totalTime() == 0 && d_func()->currentTrack && d_func()->currentTrack->track() ) {
-        return d_func()->currentTrack->track()->duration() * 1000 + 1000;
+    Q_D( const AudioEngine );
+
+    // FIXME : This is too hacky. The problem is that I don't know why
+    //         libVLC doesn't report total duration for stream data (imem://)
+    // But it's not a real problem for playback, since EndOfStream is emitted by libVLC itself
+    // This value is only used by AudioOutput to evaluate if it's close to end of stream
+    if ( d->audioOutput->totalTime() <= 0 && d->currentTrack && d->currentTrack->track() ) {
+        return d->currentTrack->track()->duration() * 1000 + 1000;
     }
-    return d_func()->audioOutput->totalTime();
+    return d->audioOutput->totalTime();
 }
 
 
@@ -1338,7 +1301,7 @@ AudioEngine::setCurrentTrackPlaylist( const playlistinterface_ptr& playlist )
 
 
 void
-AudioEngine::setDspCallback( void ( *cb ) ( signed short*, int, int ) )
+AudioEngine::setDspCallback( std::function< void( int state, int frameNumber, float* samples, int nb_channels, int nb_samples ) > cb )
 {
     Q_D( AudioEngine );
 

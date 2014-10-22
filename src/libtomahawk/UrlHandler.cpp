@@ -26,8 +26,6 @@
 
 #include <QFile>
 
-#include <boost/bind.hpp>
-
 Q_DECLARE_METATYPE( IODeviceFactoryFunc )
 Q_DECLARE_METATYPE( IODeviceCallback )
 
@@ -40,18 +38,9 @@ QMap< QString, UrlTranslatorFunc > urltranslators;
 void
 initialiseDefaultIOFactories()
 {
-    {
-        // _1 = result, _2 = callback function for IODevice
-        IODeviceFactoryFunc fac = boost::bind( localFileIODeviceFactory, _1, _2, _3 );
-        iofactories.insert( "file", fac );
-    }
-
-    {
-        IODeviceFactoryFunc fac = boost::bind( httpIODeviceFactory, _1, _2, _3 );
-        iofactories.insert( "http", fac );
-        iofactories.insert( "https", fac );
-    }
-
+    iofactories.insert( "file", localFileIODeviceFactory );
+    iofactories.insert( "http", httpIODeviceFactory );
+    iofactories.insert( "https", httpIODeviceFactory );
 }
 
 void
@@ -68,7 +57,7 @@ registerIODeviceFactory( const QString &proto, IODeviceFactoryFunc fac )
 
 void
 getIODeviceForUrl( const Tomahawk::result_ptr& result, const QString& url,
-                            boost::function< void ( const QString, QSharedPointer< QIODevice > ) > callback )
+                   std::function< void ( const QString, QSharedPointer< QIODevice > ) > callback )
 {
     if ( iofactories.isEmpty() )
     {
@@ -98,14 +87,14 @@ getIODeviceForUrl( const Tomahawk::result_ptr& result, const QString& url,
 
 void
 localFileIODeviceFactory( const Tomahawk::result_ptr&, const QString& url,
-                                   boost::function< void ( const QString&, QSharedPointer< QIODevice >& ) > callback )
+                          IODeviceCallback callback )
 {
     // ignore "file://" at front of url
-    QFile* io = new QFile( url.mid( QString( "file://" ).length() ) );
+    QFile* io = new QFile( url.mid( strlen( "file://" ) ) );
     if ( io )
         io->open( QIODevice::ReadOnly );
 
-    //boost::functions cannot accept temporaries as parameters
+    // std::functions cannot accept temporaries as parameters
     QSharedPointer< QIODevice > sp = QSharedPointer<QIODevice>( io );
     callback( url, sp );
 }
@@ -113,7 +102,7 @@ localFileIODeviceFactory( const Tomahawk::result_ptr&, const QString& url,
 
 void
 httpIODeviceFactory( const Tomahawk::result_ptr&, const QString& url,
-                              boost::function< void ( const QString&, QSharedPointer< QIODevice >& ) > callback )
+                     IODeviceCallback callback )
 {
     QNetworkRequest req( url );
     // Follow HTTP Redirects
@@ -127,7 +116,8 @@ httpIODeviceFactory( const Tomahawk::result_ptr&, const QString& url,
 
 
 void
-getUrlTranslation( const Tomahawk::result_ptr& result, const QString& url, boost::function< void ( const QString& ) > callback )
+getUrlTranslation( const Tomahawk::result_ptr& result, const QString& url,
+                   std::function< void ( const QString& ) > callback )
 {
     QRegExp rx( "^([a-zA-Z0-9]+)://(.+)$" );
     if ( rx.indexIn( url ) == -1 )

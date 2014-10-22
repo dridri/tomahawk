@@ -48,8 +48,6 @@
     #include "collection/Collection.h"
 #endif
 
-#include <boost/concept_check.hpp>
-
 #define DEFAULT_WORKER_THREADS 4
 #define MAX_WORKER_THREADS 16
 
@@ -119,6 +117,7 @@ Database::Database( const QString& dbname, QObject* parent )
     tDebug() << Q_FUNC_INFO << "Using" << m_maxConcurrentThreads << "database worker threads";
 
     connect( m_impl, SIGNAL( indexReady() ), SLOT( markAsReady() ) );
+    connect( m_impl, SIGNAL( indexStarted() ), SIGNAL( indexStarted() ) );
     connect( m_impl, SIGNAL( indexReady() ), SIGNAL( indexReady() ) );
 
     Q_ASSERT( m_workerRW );
@@ -242,21 +241,42 @@ Database::enqueue( const Tomahawk::dbcmd_ptr& lc )
         {
             workerThread = m_workerThreads.at( i );
 
-            if ( workerThread && workerThread.data()->worker() && !workerThread.data()->worker().data()->busy() )
+            if ( !workerThread || !workerThread->worker() )
             {
-                happyWorker = workerThread.data()->worker();
+                // We have no valid worker for the current thread so skip it.
+                continue;
+            }
+
+            if ( !workerThread->worker()->busy() )
+            {
+                // Case 1: We have a workerThread with no outstanding jobs.
+                // As this is the optimal situation we do not need to look at
+                // the other workers.
+                happyWorker = workerThread->worker();
                 break;
             }
-            busyThreads++;
+            else
+            {
+                busyThreads++;
 
-            if ( ( !happyWorker && workerThread && workerThread.data()->worker() ) ||
-                 ( workerThread && workerThread.data()->worker() && workerThread.data()->worker().data()->outstandingJobs() < happyWorker.data()->outstandingJobs() ) )
-                happyWorker = workerThread.data()->worker();
+                if ( !happyWorker )
+                {
+                    // Case 2: We have not yet got a happyWorker but the current
+                    // workerThread has a worker so use it as a fallback.
+                    happyWorker = workerThread->worker();
+                }
+                else if ( workerThread->worker()->outstandingJobs() < happyWorker->outstandingJobs() )
+                {
+                    // Case 3: We have a worker and the current worker is less busy
+                    // than the previous minimum.
+                    happyWorker = workerThread->worker();
+                }
+            }
         }
 
         tDebug( LOGVERBOSE ) << "Enqueueing command to thread:" << happyWorker << busyThreads << lc->commandname();
         Q_ASSERT( happyWorker );
-        happyWorker.data()->enqueue( lc );
+        happyWorker->enqueue( lc );
     }
 }
 
@@ -285,6 +305,14 @@ Database::markAsReady()
         return;
 
     tLog() << Q_FUNC_INFO << "Database is ready now!";
+
+    // In addition to a ready index, we also need at leat one workerThread to
+    // be ready so that we can queue DatabaseCommands.
+    if ( m_workerThreads.size() > 0 && m_workerThreads.first() )
+    {
+        m_workerThreads.first()->waitForEventLoopStart();
+    }
+
     m_ready = true;
     emit ready();
 }
@@ -299,7 +327,7 @@ Database::registerCommand( DatabaseCommandFactory* commandFactory )
     const QString commandName = command->commandname();
     const QString className = command->metaObject()->className();
 
-    tDebug() << "Registering command" << commandName << "from class" << className;
+    tDebug( LOGVERBOSE ) << "Registering command" << commandName << "from class" << className;
 
     if( m_commandFactories.keys().contains( commandName ) )
     {
